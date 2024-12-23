@@ -42,7 +42,7 @@ type OpenAIChoice struct {
 	Index        int           `json:"index"`
 	Message      OpenAIMessage `json:"message"`
 	LogProbs     *string       `json:"logprobs"`
-	FinishReason string        `json:"finish_reason"`
+	FinishReason *string       `json:"finish_reason"`
 	Delta        OpenAIDelta   `json:"delta"`
 }
 

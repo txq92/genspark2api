@@ -38,7 +38,7 @@ func createRequestBody(openAIReq *model.OpenAIChatCompletionRequest) map[string]
 }
 
 // createStreamResponse 创建流式响应
-func createStreamResponse(responseId, modelName string, delta model.OpenAIDelta, finishReason string) model.OpenAIChatCompletionResponse {
+func createStreamResponse(responseId, modelName string, delta model.OpenAIDelta, finishReason *string) model.OpenAIChatCompletionResponse {
 	return model.OpenAIChatCompletionResponse{
 		ID:      responseId,
 		Object:  "chat.completion.chunk",
@@ -106,13 +106,15 @@ func handleMessageFieldDelta(c *gin.Context, event map[string]interface{}, respo
 		return nil
 	}
 
-	streamResp := createStreamResponse(responseId, modelName, model.OpenAIDelta{Content: delta, Role: "assistant"}, "")
+	streamResp := createStreamResponse(responseId, modelName, model.OpenAIDelta{Content: delta, Role: "assistant"}, nil)
 	return sendSSEvent(c, streamResp)
 }
 
 // handleMessageResult 处理消息结果
 func handleMessageResult(c *gin.Context, responseId, modelName string) bool {
-	streamResp := createStreamResponse(responseId, modelName, model.OpenAIDelta{}, "stop")
+	finishReason := "stop"
+
+	streamResp := createStreamResponse(responseId, modelName, model.OpenAIDelta{}, &finishReason)
 	if err := sendSSEvent(c, streamResp); err != nil {
 		return false
 	}
@@ -237,6 +239,7 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, jsonData [
 		return
 	}
 
+	finishReason := "stop"
 	// 创建并返回 OpenAIChatCompletionResponse 结构
 	resp := model.OpenAIChatCompletionResponse{
 		ID:      fmt.Sprintf(responseIDFormat, time.Now().Format("20060102150405")),
@@ -249,7 +252,7 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, jsonData [
 					Role:    "assistant",
 					Content: content,
 				},
-				FinishReason: "stop",
+				FinishReason: &finishReason,
 			},
 		},
 	}
