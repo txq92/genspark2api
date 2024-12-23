@@ -101,11 +101,12 @@ func handleMessageFieldDelta(c *gin.Context, event map[string]interface{}, respo
 	}
 
 	delta, ok := event["delta"].(string)
+
 	if !ok {
 		return nil
 	}
 
-	streamResp := createStreamResponse(responseId, modelName, model.OpenAIDelta{Content: delta}, "")
+	streamResp := createStreamResponse(responseId, modelName, model.OpenAIDelta{Content: delta, Role: "assistant"}, "")
 	return sendSSEvent(c, streamResp)
 }
 
@@ -199,7 +200,6 @@ func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, jsonData []by
 	})
 }
 
-// handleNonStreamRequest 处理非流式请求
 // handleNonStreamRequest 处理非流式请求
 func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, jsonData []byte, modelName string) {
 	response, err := makeRequest(client, jsonData, false)
