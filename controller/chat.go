@@ -118,7 +118,7 @@ func handleMessageResult(c *gin.Context, responseId, modelName string) bool {
 	if err := sendSSEvent(c, streamResp); err != nil {
 		return false
 	}
-	c.SSEvent("", "[DONE]")
+	c.SSEvent("", " [DONE]")
 	return false
 }
 
@@ -128,7 +128,7 @@ func sendSSEvent(c *gin.Context, response model.OpenAIChatCompletionResponse) er
 	if err != nil {
 		return err
 	}
-	c.SSEvent("", string(jsonResp))
+	c.SSEvent("", " "+string(jsonResp))
 	c.Writer.Flush()
 	return nil
 }
