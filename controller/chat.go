@@ -176,7 +176,7 @@ func ChatForOpenAI(c *gin.Context) {
 	if openAIReq.Stream {
 		handleStreamRequest(c, client, jsonData, openAIReq.Model)
 	} else {
-		handleNonStreamRequest(c, client, jsonData)
+		handleNonStreamRequest(c, client, jsonData, openAIReq.Model)
 	}
 }
 
@@ -200,12 +200,59 @@ func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, jsonData []by
 }
 
 // handleNonStreamRequest 处理非流式请求
-func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, jsonData []byte) {
+// handleNonStreamRequest 处理非流式请求
+func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, jsonData []byte, modelName string) {
 	response, err := makeRequest(client, jsonData, false)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.String(200, response.Body)
+	reader := strings.NewReader(response.Body)
+	scanner := bufio.NewScanner(reader)
+
+	var content string
+	for scanner.Scan() {
+		line := scanner.Text()
+		fmt.Println(line)
+		if strings.HasPrefix(line, "data: ") {
+			data := strings.TrimPrefix(line, "data: ")
+			var parsedResponse struct {
+				Type      string `json:"type"`
+				FieldName string `json:"field_name"`
+				Content   string `json:"content"`
+			}
+			if err := json.Unmarshal([]byte(data), &parsedResponse); err != nil {
+				continue
+			}
+			if parsedResponse.Type == "message_result" {
+				content = parsedResponse.Content
+				break
+			}
+		}
+	}
+
+	if content == "" {
+		c.JSON(500, gin.H{"error": "No valid response content"})
+		return
+	}
+
+	// 创建并返回 OpenAIChatCompletionResponse 结构
+	resp := model.OpenAIChatCompletionResponse{
+		ID:      fmt.Sprintf(responseIDFormat, time.Now().Format("20060102150405")),
+		Object:  "chat.completion",
+		Created: time.Now().Unix(),
+		Model:   modelName,
+		Choices: []model.OpenAIChoice{
+			{
+				Message: model.OpenAIMessage{
+					Role:    "assistant",
+					Content: content,
+				},
+				FinishReason: "stop",
+			},
+		},
+	}
+
+	c.JSON(200, resp)
 }
