@@ -10,9 +10,9 @@
 
 ## 功能
 
-- [x] 自定义请求头校验值(Authorization)
-- [x] 识图
-- [x] Cookie池
+- [x] 支持自定义请求头校验值(Authorization)
+- [x] 支持图片/文件多轮对话
+- [x] 支持cookie池(随机)
 
 ### 接口文档:
 
@@ -68,7 +68,8 @@ deanxv/genspark2api
 
 其中`API_SECRET`、`GS_COOKIE`修改为自己的。
 
-如果上面的镜像无法拉取,可以尝试使用 GitHub 的 Docker 镜像,将上面的`deanxv/genspark2api`替换为`ghcr.io/deanxv/genspark2api`即可。
+如果上面的镜像无法拉取,可以尝试使用 GitHub 的 Docker 镜像,将上面的`deanxv/genspark2api`替换为
+`ghcr.io/deanxv/genspark2api`即可。
 
 ### 部署到第三方平台
 
@@ -112,11 +113,14 @@ Render 可以直接部署 docker 镜像,不需要 fork 仓库：[Render](https:/
 
 ### 环境变量
 
-1. `API_SECRET=123456`  接口密钥-修改此行为请求头(Authorization)校验的值(同API-KEY)(多个请以,分隔)
-2. `GS_COOKIE=******`  cookie (多个请以,分隔)
+1. `PORT=7055`  [可选]端口,默认为7055
+2. `API_SECRET=123456`  [可选]接口密钥-修改此行为请求头(Authorization)校验的值(同API-KEY)(多个请以,分隔)
+3. `GS_COOKIE=******`  cookie (多个请以,分隔)
+4. `AUTO_DEL_CHAT=0`  [可选]对话完成自动删除[0:关闭,1:开启]
 
 ### cookie获取方式
+
 1. 打开**F12**开发者工具
 2. 发起对话
 3. 点击ask请求，请求头中的**cookie**即为环境变量**GS_COOKIE**所需值
-![img.png](docs/img.png)
+   ![img.png](docs/img.png)
