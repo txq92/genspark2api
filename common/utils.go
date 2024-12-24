@@ -1,6 +1,7 @@
 package common
 
 import (
+	"encoding/base64"
 	"fmt"
 	"github.com/google/uuid"
 	jsoniter "github.com/json-iterator/go"
@@ -81,4 +82,26 @@ func SliceContains(slice []string, str string) bool {
 		}
 	}
 	return false
+}
+
+func IsImageBase64(s string) bool {
+	// 检查字符串是否符合数据URL的格式
+	//if !strings.HasPrefix(s, "data:image/") || !strings.Contains(s, ";base64,") {
+	//	return false
+	//}
+
+	if !strings.Contains(s, ";base64,") {
+		return false
+	}
+
+	// 获取";base64,"后的Base64编码部分
+	dataParts := strings.Split(s, ";base64,")
+	if len(dataParts) != 2 {
+		return false
+	}
+	base64Data := dataParts[1]
+
+	// 尝试Base64解码
+	_, err := base64.StdEncoding.DecodeString(base64Data)
+	return err == nil
 }

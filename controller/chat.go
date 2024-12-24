@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bufio"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"genspark2api/common"
@@ -10,6 +11,8 @@ import (
 	"github.com/Danny-Dasilva/CycleTLS/cycletls"
 	"github.com/gin-gonic/gin"
 	"io"
+	"io/ioutil"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -21,14 +24,72 @@ const (
 	responseIDFormat = "chatcmpl-%s"
 )
 
-// createRequestBody 创建请求体
+type OpenAIChatMessage struct {
+	Role    string      `json:"role"`
+	Content interface{} `json:"content"`
+}
+
+type OpenAIChatCompletionRequest struct {
+	Messages []OpenAIChatMessage
+	Model    string
+}
+
+func isBase64(s string) bool {
+	_, err := base64.StdEncoding.DecodeString(s)
+	return err == nil
+}
+
+func fetchImageAsBase64(url string) (string, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	return base64.StdEncoding.EncodeToString(data), nil
+}
+
+func processMessages(messages []model.OpenAIChatMessage) {
+	for i, message := range messages {
+		if contentArray, ok := message.Content.([]interface{}); ok {
+			for j, content := range contentArray {
+				if contentMap, ok := content.(map[string]interface{}); ok {
+					if contentType, ok := contentMap["type"].(string); ok && contentType == "image_url" {
+						if imageMap, ok := contentMap["image_url"].(map[string]interface{}); ok {
+							if url, ok := imageMap["url"].(string); ok && !common.IsImageBase64(url) {
+								base64Data, err := fetchImageAsBase64(url)
+								if err != nil {
+									fmt.Printf("获取图像时出错: %v\n", err)
+									continue
+								}
+								imageMap["url"] = base64Data
+								contentArray[j] = contentMap
+							}
+						}
+					}
+				}
+			}
+			messages[i].Content = contentArray
+		}
+	}
+}
+
 func createRequestBody(openAIReq *model.OpenAIChatCompletionRequest) map[string]interface{} {
+	// 处理消息中的图像 URL
+	processMessages(openAIReq.Messages)
+
+	// 创建请求体
 	return map[string]interface{}{
 		"type":                 chatType,
-		"current_query_string": "type=" + chatType,
+		"current_query_string": "type=chat",
 		"messages":             openAIReq.Messages,
-		"user_s_input":         openAIReq.Messages[len(openAIReq.Messages)-1].Content,
-		"action_params":        map[string]interface{}{},
+		//"user_s_input":         openAIReq.Messages[len(openAIReq.Messages)-1].Content,
+		"action_params": map[string]interface{}{},
 		"extra_data": map[string]interface{}{
 			"models":                 []string{openAIReq.Model},
 			"run_with_another_model": false,
@@ -216,7 +277,6 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, jsonData [
 	var content string
 	for scanner.Scan() {
 		line := scanner.Text()
-		fmt.Println(line)
 		if strings.HasPrefix(line, "data: ") {
 			data := strings.TrimPrefix(line, "data: ")
 			var parsedResponse struct {
@@ -258,4 +318,24 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, jsonData [
 	}
 
 	c.JSON(200, resp)
+}
+
+func OpenaiModels(c *gin.Context) {
+	var modelsResp []string
+
+	modelsResp = common.DefaultOpenaiModelList
+
+	var openaiModelListResponse model.OpenaiModelListResponse
+	var openaiModelResponse []model.OpenaiModelResponse
+	openaiModelListResponse.Object = "list"
+
+	for _, modelResp := range modelsResp {
+		openaiModelResponse = append(openaiModelResponse, model.OpenaiModelResponse{
+			ID:     modelResp,
+			Object: "model",
+		})
+	}
+	openaiModelListResponse.Data = openaiModelResponse
+	c.JSON(http.StatusOK, openaiModelListResponse)
+	return
 }
