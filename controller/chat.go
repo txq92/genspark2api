@@ -23,6 +23,7 @@ const (
 	deleteEndpoint   = baseURL + "/api/project/delete?project_id=%s"
 	uploadEndpoint   = baseURL + "/api/get_upload_personal_image_url"
 	chatType         = "COPILOT_MOA_CHAT"
+	imageType        = "COPILOT_MOA_IMAGE"
 	responseIDFormat = "chatcmpl-%s"
 )
 
@@ -191,6 +192,48 @@ func createRequestBody(c *gin.Context, cookie string, openAIReq *model.OpenAICha
 	}
 }
 
+func createImageRequestBody(c *gin.Context, cookie string, openAIReq *model.OpenAIImagesGenerationRequest) map[string]interface{} {
+
+	if openAIReq.Model == "dall-e-3" {
+		openAIReq.Model = "dalle-3"
+	}
+	// 创建模型配置
+	modelConfigs := []map[string]interface{}{
+		{
+			"model":                   openAIReq.Model,
+			"aspect_ratio":            "auto",
+			"use_personalized_models": false,
+			"fashion_profile_id":      nil,
+			"hd":                      false,
+			"reflection_enabled":      false,
+			"style":                   "auto",
+		},
+	}
+
+	// 创建消息数组
+	messages := []map[string]interface{}{
+		{
+			"role":    "user",
+			"content": openAIReq.Prompt,
+		},
+	}
+
+	// 创建请求体
+	return map[string]interface{}{
+		"type":                 "COPILOT_MOA_IMAGE",
+		"current_query_string": "type=COPILOT_MOA_IMAGE",
+		"messages":             messages,
+		"user_s_input":         openAIReq.Prompt,
+		"action_params":        map[string]interface{}{},
+		"extra_data": map[string]interface{}{
+			"model_configs":  modelConfigs,
+			"llm_model":      "gpt-4o",
+			"imageModelMap":  map[string]interface{}{},
+			"writingContent": nil,
+		},
+	}
+}
+
 // createStreamResponse 创建流式响应
 func createStreamResponse(responseId, modelName string, delta model.OpenAIDelta, finishReason *string) model.OpenAIChatCompletionResponse {
 	return model.OpenAIChatCompletionResponse{
@@ -304,6 +347,24 @@ func makeRequest(client cycletls.CycleTLS, jsonData []byte, cookie string, isStr
 	if isStream {
 		accept = "text/event-stream"
 	}
+
+	return client.Do(apiEndpoint, cycletls.Options{
+		Timeout: 10 * 60 * 60,
+		Body:    string(jsonData),
+		Method:  "POST",
+		Headers: map[string]string{
+			"Content-Type": "application/json",
+			"Accept":       accept,
+			"Origin":       baseURL,
+			"Referer":      baseURL + "/",
+			"Cookie":       cookie,
+		},
+	}, "POST")
+}
+
+// makeRequest 发送HTTP请求
+func makeImageRequest(client cycletls.CycleTLS, jsonData []byte, cookie string) (cycletls.Response, error) {
+	accept := "*/*"
 
 	return client.Do(apiEndpoint, cycletls.Options{
 		Timeout: 10 * 60 * 60,
@@ -511,4 +572,145 @@ func OpenaiModels(c *gin.Context) {
 	openaiModelListResponse.Data = openaiModelResponse
 	c.JSON(http.StatusOK, openaiModelListResponse)
 	return
+}
+
+func ImagesForOpenAI(c *gin.Context) {
+	var openAIReq model.OpenAIImagesGenerationRequest
+	if err := c.BindJSON(&openAIReq); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	cookie, err := common.RandomElement(config.GSCookies)
+	if err != nil {
+		return
+	}
+
+	requestBody := createImageRequestBody(c, cookie, &openAIReq)
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Failed to marshal request body"})
+		return
+	}
+
+	client := cycletls.Init()
+
+	response, err := makeImageRequest(client, jsonData, cookie)
+
+	if err != nil {
+		return
+	} else {
+		// 解析响应获取task_ids
+		taskIDs := extractTaskIDs(response.Body)
+		if len(taskIDs) == 0 {
+			c.JSON(500, gin.H{"error": "No task IDs found"})
+			return
+		}
+
+		// 获取所有图片URL
+		imageURLs := pollTaskStatus(c, client, taskIDs, cookie)
+
+		// 创建响应对象
+		response := model.OpenAIImagesGenerationResponse{
+			Created: time.Now().Unix(),
+			Data:    make([]*model.OpenAIImagesGenerationDataResponse, 0, len(imageURLs)),
+			// 如果有建议词可以在这里添加
+			Suggestions: []string{},
+		}
+
+		// 遍历 imageURLs 组装数据
+		for _, url := range imageURLs {
+			data := &model.OpenAIImagesGenerationDataResponse{
+				URL:           url,
+				RevisedPrompt: openAIReq.Prompt,
+			}
+			response.Data = append(response.Data, data)
+		}
+
+		c.JSON(200, response)
+	}
+}
+
+func extractTaskIDs(responseBody string) []string {
+	var taskIDs []string
+
+	// 分行处理响应
+	lines := strings.Split(responseBody, "\n")
+	for _, line := range lines {
+		// 找到包含task_id的行
+		if strings.Contains(line, "task_id") {
+			// 去掉"data: "前缀
+			jsonStr := strings.TrimPrefix(line, "data: ")
+
+			// 解析外层JSON
+			var outerJSON struct {
+				Content string `json:"content"`
+			}
+			if err := json.Unmarshal([]byte(jsonStr), &outerJSON); err != nil {
+				continue
+			}
+
+			// 解析内层JSON (content字段)
+			var innerJSON struct {
+				GeneratedImages []struct {
+					TaskID string `json:"task_id"`
+				} `json:"generated_images"`
+			}
+			if err := json.Unmarshal([]byte(outerJSON.Content), &innerJSON); err != nil {
+				continue
+			}
+
+			// 提取所有task_id
+			for _, img := range innerJSON.GeneratedImages {
+				if img.TaskID != "" {
+					taskIDs = append(taskIDs, img.TaskID)
+				}
+			}
+		}
+	}
+	return taskIDs
+}
+
+func pollTaskStatus(c *gin.Context, client cycletls.CycleTLS, taskIDs []string, cookie string) []string {
+	var imageURLs []string
+
+	for _, taskID := range taskIDs {
+		for {
+			// 构建请求URL
+			url := fmt.Sprintf("https://www.genspark.ai/api/spark/image_generation_task_status?task_id=%s", taskID)
+
+			// 发送请求
+			response, err := client.Do(url, cycletls.Options{
+				Method: "GET",
+				Headers: map[string]string{
+					"Cookie": cookie,
+				},
+			}, "GET")
+
+			if err != nil {
+				continue
+			}
+
+			var result struct {
+				Data struct {
+					ImageURLsNowatermark []string `json:"image_urls_nowatermark"`
+					Status               string   `json:"status"`
+				}
+			}
+
+			if err := json.Unmarshal([]byte(response.Body), &result); err != nil {
+				continue
+			}
+
+			// 如果状态成功且有图片URL
+			if result.Data.Status == "SUCCESS" && len(result.Data.ImageURLsNowatermark) > 0 {
+				imageURLs = append(imageURLs, result.Data.ImageURLsNowatermark...)
+				break
+			}
+
+			// 等待1秒后重试
+			time.Sleep(time.Second)
+		}
+	}
+
+	return imageURLs
 }
