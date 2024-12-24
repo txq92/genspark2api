@@ -11,6 +11,7 @@
 ## 功能
 
 - [x] 自定义请求头校验值(Authorization)
+- [x] 识图
 - [x] Cookie池
 
 ### 接口文档:
