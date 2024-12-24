@@ -20,6 +20,8 @@ import (
 const (
 	baseURL          = "https://www.genspark.ai"
 	apiEndpoint      = baseURL + "/api/copilot/ask"
+	deleteEndpoint   = baseURL + "/api/project/delete?project_id=%s"
+	uploadEndpoint   = baseURL + "/api/get_upload_personal_image_url"
 	chatType         = "COPILOT_MOA_CHAT"
 	responseIDFormat = "chatcmpl-%s"
 )
@@ -32,11 +34,6 @@ type OpenAIChatMessage struct {
 type OpenAIChatCompletionRequest struct {
 	Messages []OpenAIChatMessage
 	Model    string
-}
-
-func isBase64(s string) bool {
-	_, err := base64.StdEncoding.DecodeString(s)
-	return err == nil
 }
 
 func fetchImageAsBase64(url string) (string, error) {
@@ -54,21 +51,17 @@ func fetchImageAsBase64(url string) (string, error) {
 	return base64.StdEncoding.EncodeToString(data), nil
 }
 
-func processMessages(messages []model.OpenAIChatMessage) {
+func processMessages(c *gin.Context, cookie string, messages []model.OpenAIChatMessage) {
+	client := cycletls.Init()
+
 	for i, message := range messages {
 		if contentArray, ok := message.Content.([]interface{}); ok {
 			for j, content := range contentArray {
 				if contentMap, ok := content.(map[string]interface{}); ok {
 					if contentType, ok := contentMap["type"].(string); ok && contentType == "image_url" {
 						if imageMap, ok := contentMap["image_url"].(map[string]interface{}); ok {
-							if url, ok := imageMap["url"].(string); ok && !common.IsImageBase64(url) {
-								base64Data, err := fetchImageAsBase64(url)
-								if err != nil {
-									fmt.Printf("获取图像时出错: %v\n", err)
-									continue
-								}
-								imageMap["url"] = base64Data
-								contentArray[j] = contentMap
+							if url, ok := imageMap["url"].(string); ok {
+								processUrl(client, cookie, url, imageMap, j, contentArray)
 							}
 						}
 					}
@@ -78,10 +71,110 @@ func processMessages(messages []model.OpenAIChatMessage) {
 		}
 	}
 }
+func processUrl(client cycletls.CycleTLS, cookie string, url string, imageMap map[string]interface{}, index int, contentArray []interface{}) {
+	// 判断是否为URL
+	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
+		// 下载文件
+		bytes, err := fetchImageBytes(url)
+		if err != nil {
+			fmt.Printf("下载文件失败: %v\n", err)
+			return
+		}
 
-func createRequestBody(openAIReq *model.OpenAIChatCompletionRequest) map[string]interface{} {
+		processBytes(client, cookie, bytes, imageMap, index, contentArray)
+	} else {
+		// 尝试解析base64
+		var bytes []byte
+		var err error
+
+		// 处理可能包含 data:image/ 前缀的base64
+		base64Str := url
+		if strings.Contains(url, ";base64,") {
+			base64Str = strings.Split(url, ";base64,")[1]
+		}
+
+		bytes, err = base64.StdEncoding.DecodeString(base64Str)
+		if err != nil {
+			fmt.Printf("base64解码失败: %v\n", err)
+			return
+		}
+
+		processBytes(client, cookie, bytes, imageMap, index, contentArray)
+	}
+}
+
+func processBytes(client cycletls.CycleTLS, cookie string, bytes []byte, imageMap map[string]interface{}, index int, contentArray []interface{}) {
+	// 检查是否为图片类型
+	contentType := http.DetectContentType(bytes)
+	if strings.HasPrefix(contentType, "image/") {
+		// 是图片类型，转换为base64
+		base64Data := "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(bytes)
+		imageMap["url"] = base64Data
+	} else {
+		response, err := makeGetUploadUrlRequest(client, cookie)
+		if err != nil {
+			fmt.Printf("makeUploadRequest ERR: %v\n", err)
+			return
+		}
+
+		var jsonResponse map[string]interface{}
+		if err := json.Unmarshal([]byte(response.Body), &jsonResponse); err != nil {
+			fmt.Printf("Unmarshal ERR: %v\n", err)
+			return
+		}
+
+		uploadImageUrl, ok := jsonResponse["data"].(map[string]interface{})["upload_image_url"].(string)
+		privateStorageUrl, ok := jsonResponse["data"].(map[string]interface{})["private_storage_url"].(string)
+
+		if !ok {
+			fmt.Println("Failed to extract upload_image_url")
+			return
+		}
+
+		// 发送OPTIONS预检请求
+		//_, err = makeOptionsRequest(client, uploadImageUrl)
+		//if err != nil {
+		//	return
+		//}
+		// 上传文件
+		_, err = makeUploadRequest(client, uploadImageUrl, bytes)
+		if err != nil {
+			fmt.Printf("makeUploadRequest ERR: %v\n", err)
+			return
+		}
+		//fmt.Println(resp)
+
+		// 创建新的 private_file 格式的内容
+		privateFile := map[string]interface{}{
+			"type": "private_file",
+			"private_file": map[string]interface{}{
+				"name":                "file", // 你可能需要从原始文件名或其他地方获取
+				"type":                contentType,
+				"size":                len(bytes),
+				"ext":                 strings.Split(contentType, "/")[1], // 简单处理，可能需要更复杂的逻辑
+				"private_storage_url": privateStorageUrl,
+			},
+		}
+
+		// 替换数组中的元素
+		contentArray[index] = privateFile
+	}
+}
+
+// 获取文件字节数组的函数
+func fetchImageBytes(url string) ([]byte, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	return ioutil.ReadAll(resp.Body)
+}
+
+func createRequestBody(c *gin.Context, cookie string, openAIReq *model.OpenAIChatCompletionRequest) map[string]interface{} {
 	// 处理消息中的图像 URL
-	processMessages(openAIReq.Messages)
+	processMessages(c, cookie, openAIReq.Messages)
 
 	// 创建请求体
 	return map[string]interface{}{
@@ -116,7 +209,9 @@ func createStreamResponse(responseId, modelName string, delta model.OpenAIDelta,
 }
 
 // handleStreamResponse 处理流式响应
-func handleStreamResponse(c *gin.Context, reader *bufio.Reader, responseId, model string) bool {
+func handleStreamResponse(c *gin.Context, reader *bufio.Reader, responseId, cookie, model string) bool {
+
+	var projectId string
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
@@ -143,11 +238,20 @@ func handleStreamResponse(c *gin.Context, reader *bufio.Reader, responseId, mode
 		}
 
 		switch eventType {
+		case "project_start":
+			projectId, _ = event["id"].(string)
 		case "message_field_delta":
 			if err := handleMessageFieldDelta(c, event, responseId, model); err != nil {
 				return false
 			}
 		case "message_result":
+			// 删除临时会话
+			if config.AutoDelChat == 1 {
+				go func() {
+					c := cycletls.Init()
+					makeDeleteRequest(c, cookie, projectId)
+				}()
+			}
 			return handleMessageResult(c, responseId, model)
 		}
 	}
@@ -195,12 +299,7 @@ func sendSSEvent(c *gin.Context, response model.OpenAIChatCompletionResponse) er
 }
 
 // makeRequest 发送HTTP请求
-func makeRequest(client cycletls.CycleTLS, jsonData []byte, isStream bool) (cycletls.Response, error) {
-	cookie, err := common.RandomElement(config.GSCookies)
-	if err != nil {
-		return cycletls.Response{}, err
-	}
-
+func makeRequest(client cycletls.CycleTLS, jsonData []byte, cookie string, isStream bool) (cycletls.Response, error) {
 	accept := "application/json"
 	if isStream {
 		accept = "text/event-stream"
@@ -220,6 +319,75 @@ func makeRequest(client cycletls.CycleTLS, jsonData []byte, isStream bool) (cycl
 	}, "POST")
 }
 
+func makeDeleteRequest(client cycletls.CycleTLS, cookie, projectId string) (cycletls.Response, error) {
+	accept := "application/json"
+
+	return client.Do(fmt.Sprintf(deleteEndpoint, projectId), cycletls.Options{
+		Timeout: 10 * 60 * 60,
+		Method:  "GET",
+		Headers: map[string]string{
+			"Content-Type": "application/json",
+			"Accept":       accept,
+			"Origin":       baseURL,
+			"Referer":      baseURL + "/",
+			"Cookie":       cookie,
+		},
+	}, "GET")
+}
+
+func makeGetUploadUrlRequest(client cycletls.CycleTLS, cookie string) (cycletls.Response, error) {
+
+	accept := "*/*"
+
+	return client.Do(fmt.Sprintf(uploadEndpoint), cycletls.Options{
+		Timeout: 10 * 60 * 60,
+		Method:  "GET",
+		Headers: map[string]string{
+			"Content-Type": "application/json",
+			"Accept":       accept,
+			"Origin":       baseURL,
+			"Referer":      baseURL + "/",
+			"Cookie":       cookie,
+		},
+	}, "GET")
+}
+
+func makeOptionsRequest(client cycletls.CycleTLS, uploadUrl string) (cycletls.Response, error) {
+	return client.Do(uploadUrl, cycletls.Options{
+		Method: "OPTIONS",
+		Headers: map[string]string{
+			"Accept":                         "*/*",
+			"Access-Control-Request-Headers": "x-ms-blob-type",
+			"Access-Control-Request-Method":  "PUT",
+			"Origin":                         "https://www.genspark.ai",
+			"Sec-Fetch-Dest":                 "empty",
+			"Sec-Fetch-Mode":                 "cors",
+			"Sec-Fetch-Site":                 "cross-site",
+		},
+		UserAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+	}, "OPTIONS")
+}
+
+func makeUploadRequest(client cycletls.CycleTLS, uploadUrl string, fileBytes []byte) (cycletls.Response, error) {
+	return client.Do(uploadUrl, cycletls.Options{
+		Timeout: 30,
+		Method:  "PUT",
+		Body:    string(fileBytes),
+		Headers: map[string]string{
+			"Accept":         "*/*",
+			"x-ms-blob-type": "BlockBlob",
+			"Content-Type":   "application/octet-stream",
+			"Content-Length": fmt.Sprintf("%d", len(fileBytes)),
+			"Origin":         "https://www.genspark.ai",
+			"Sec-Fetch-Dest": "empty",
+			"Sec-Fetch-Mode": "cors",
+			"Sec-Fetch-Site": "cross-site",
+		},
+		Ja3:       "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-17513,29-23-24,0",
+		UserAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+	}, "PUT")
+}
+
 // ChatForOpenAI 处理OpenAI聊天请求
 func ChatForOpenAI(c *gin.Context) {
 	var openAIReq model.OpenAIChatCompletionRequest
@@ -227,8 +395,12 @@ func ChatForOpenAI(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
+	cookie, err := common.RandomElement(config.GSCookies)
+	if err != nil {
+		return
+	}
 
-	requestBody := createRequestBody(&openAIReq)
+	requestBody := createRequestBody(c, cookie, &openAIReq)
 	jsonData, err := json.Marshal(requestBody)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Failed to marshal request body"})
@@ -238,14 +410,15 @@ func ChatForOpenAI(c *gin.Context) {
 	client := cycletls.Init()
 
 	if openAIReq.Stream {
-		handleStreamRequest(c, client, jsonData, openAIReq.Model)
+		handleStreamRequest(c, client, cookie, jsonData, openAIReq.Model)
 	} else {
-		handleNonStreamRequest(c, client, jsonData, openAIReq.Model)
+		handleNonStreamRequest(c, client, cookie, jsonData, openAIReq.Model)
 	}
+
 }
 
 // handleStreamRequest 处理流式请求
-func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, jsonData []byte, model string) {
+func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string, jsonData []byte, model string) {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -253,19 +426,19 @@ func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, jsonData []by
 	responseId := fmt.Sprintf(responseIDFormat, time.Now().Format("20060102150405"))
 
 	c.Stream(func(w io.Writer) bool {
-		response, err := makeRequest(client, jsonData, true)
+		response, err := makeRequest(client, jsonData, cookie, true)
 		if err != nil {
 			return false
 		}
 
 		reader := bufio.NewReader(strings.NewReader(response.Body))
-		return handleStreamResponse(c, reader, responseId, model)
+		return handleStreamResponse(c, reader, responseId, cookie, model)
 	})
 }
 
 // handleNonStreamRequest 处理非流式请求
-func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, jsonData []byte, modelName string) {
-	response, err := makeRequest(client, jsonData, false)
+func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string, jsonData []byte, modelName string) {
+	response, err := makeRequest(client, jsonData, cookie, false)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return

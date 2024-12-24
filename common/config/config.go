@@ -10,6 +10,7 @@ import (
 var ApiSecret = os.Getenv("API_SECRET")
 var ApiSecrets = strings.Split(os.Getenv("API_SECRET"), ",")
 var GSCookies = strings.Split(os.Getenv("GS_COOKIE"), ",")
+var AutoDelChat = env.Int("AUTO_DEL_CHAT", 0)
 var AllDialogRecordEnable = os.Getenv("ALL_DIALOG_RECORD_ENABLE")
 var RequestOutTime = os.Getenv("REQUEST_OUT_TIME")
 var StreamRequestOutTime = os.Getenv("STREAM_REQUEST_OUT_TIME")
