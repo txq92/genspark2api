@@ -8,7 +8,7 @@ import (
 	"genspark2api/common"
 	"genspark2api/common/config"
 	"genspark2api/model"
-	"github.com/Danny-Dasilva/CycleTLS/cycletls"
+	"github.com/deanxv/CycleTLS/cycletls"
 	"github.com/gin-gonic/gin"
 	"io"
 	"io/ioutil"
@@ -252,24 +252,26 @@ func createStreamResponse(responseId, modelName string, delta model.OpenAIDelta,
 }
 
 // handleStreamResponse 处理流式响应
-func handleStreamResponse(c *gin.Context, reader *bufio.Reader, responseId, cookie, model string) bool {
-
+func handleStreamResponse(c *gin.Context, sseChan <-chan cycletls.SSEResponse, responseId, cookie, model string) bool {
 	var projectId string
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return false
+
+	for response := range sseChan {
+		if response.Done {
+			break
 		}
 
-		line = strings.TrimSpace(line)
-		if line == "" || !strings.HasPrefix(line, "data: ") {
+		data := response.Data
+		if data == "" {
 			continue
 		}
 
-		data := strings.TrimPrefix(line, "data: ")
+		// 处理 "data: " 前缀
+		data = strings.TrimSpace(data)
+		if !strings.HasPrefix(data, "data: ") {
+			continue
+		}
+		data = strings.TrimPrefix(data, "data: ")
+
 		var event map[string]interface{}
 		if err := json.Unmarshal([]byte(data), &event); err != nil {
 			continue
@@ -487,14 +489,34 @@ func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string
 	responseId := fmt.Sprintf(responseIDFormat, time.Now().Format("20060102150405"))
 
 	c.Stream(func(w io.Writer) bool {
-		response, err := makeRequest(client, jsonData, cookie, true)
+		sseChan, err := makeStreamRequest(client, jsonData, cookie)
 		if err != nil {
 			return false
 		}
 
-		reader := bufio.NewReader(strings.NewReader(response.Body))
-		return handleStreamResponse(c, reader, responseId, cookie, model)
+		return handleStreamResponse(c, sseChan, responseId, cookie, model)
 	})
+}
+
+func makeStreamRequest(client cycletls.CycleTLS, jsonData []byte, cookie string) (<-chan cycletls.SSEResponse, error) {
+	options := cycletls.Options{
+		Timeout: 10 * 60 * 60,
+		Body:    string(jsonData),
+		Method:  "POST",
+		Headers: map[string]string{
+			"Content-Type": "application/json",
+			"Accept":       "text/event-stream",
+			"Origin":       baseURL,
+			"Referer":      baseURL + "/",
+			"Cookie":       cookie,
+		},
+	}
+
+	sseChan, err := client.DoSSE(apiEndpoint, options, "POST")
+	if err != nil {
+		return nil, err
+	}
+	return sseChan, nil
 }
 
 // handleNonStreamRequest 处理非流式请求
