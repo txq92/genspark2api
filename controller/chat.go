@@ -52,7 +52,7 @@ func fetchImageAsBase64(url string) (string, error) {
 	return base64.StdEncoding.EncodeToString(data), nil
 }
 
-func processMessages(c *gin.Context, cookie string, messages []model.OpenAIChatMessage) {
+func processMessages(c *gin.Context, cookie string, messages []model.OpenAIChatMessage) error {
 	client := cycletls.Init()
 
 	for i, message := range messages {
@@ -62,7 +62,10 @@ func processMessages(c *gin.Context, cookie string, messages []model.OpenAIChatM
 					if contentType, ok := contentMap["type"].(string); ok && contentType == "image_url" {
 						if imageMap, ok := contentMap["image_url"].(map[string]interface{}); ok {
 							if url, ok := imageMap["url"].(string); ok {
-								processUrl(client, cookie, url, imageMap, j, contentArray)
+								err := processUrl(c, client, cookie, url, imageMap, j, contentArray)
+								if err != nil {
+									return err
+								}
 							}
 						}
 					}
@@ -71,15 +74,16 @@ func processMessages(c *gin.Context, cookie string, messages []model.OpenAIChatM
 			messages[i].Content = contentArray
 		}
 	}
+	return nil
 }
-func processUrl(client cycletls.CycleTLS, cookie string, url string, imageMap map[string]interface{}, index int, contentArray []interface{}) {
+func processUrl(c *gin.Context, client cycletls.CycleTLS, cookie string, url string, imageMap map[string]interface{}, index int, contentArray []interface{}) error {
 	// 判断是否为URL
 	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
 		// 下载文件
 		bytes, err := fetchImageBytes(url)
 		if err != nil {
-			fmt.Printf("下载文件失败: %v\n", err)
-			return
+			//logger.Errorf(c.Request.Context(), fmt.Sprintf("fetchImageBytes err  %v\n", err))
+			return err
 		}
 
 		processBytes(client, cookie, bytes, imageMap, index, contentArray)
@@ -96,15 +100,16 @@ func processUrl(client cycletls.CycleTLS, cookie string, url string, imageMap ma
 
 		bytes, err = base64.StdEncoding.DecodeString(base64Str)
 		if err != nil {
-			fmt.Printf("base64解码失败: %v\n", err)
-			return
+			//fmt.Printf("base64解码失败: %v\n", err)
+			return err
 		}
 
 		processBytes(client, cookie, bytes, imageMap, index, contentArray)
 	}
+	return nil
 }
 
-func processBytes(client cycletls.CycleTLS, cookie string, bytes []byte, imageMap map[string]interface{}, index int, contentArray []interface{}) {
+func processBytes(client cycletls.CycleTLS, cookie string, bytes []byte, imageMap map[string]interface{}, index int, contentArray []interface{}) error {
 	// 检查是否为图片类型
 	contentType := http.DetectContentType(bytes)
 	if strings.HasPrefix(contentType, "image/") {
@@ -114,22 +119,22 @@ func processBytes(client cycletls.CycleTLS, cookie string, bytes []byte, imageMa
 	} else {
 		response, err := makeGetUploadUrlRequest(client, cookie)
 		if err != nil {
-			fmt.Printf("makeUploadRequest ERR: %v\n", err)
-			return
+			//fmt.Printf("makeUploadRequest ERR: %v\n", err)
+			return err
 		}
 
 		var jsonResponse map[string]interface{}
 		if err := json.Unmarshal([]byte(response.Body), &jsonResponse); err != nil {
 			fmt.Printf("Unmarshal ERR: %v\n", err)
-			return
+			return err
 		}
 
 		uploadImageUrl, ok := jsonResponse["data"].(map[string]interface{})["upload_image_url"].(string)
 		privateStorageUrl, ok := jsonResponse["data"].(map[string]interface{})["private_storage_url"].(string)
 
 		if !ok {
-			fmt.Println("Failed to extract upload_image_url")
-			return
+			//fmt.Println("Failed to extract upload_image_url")
+			return fmt.Errorf("Failed to extract upload_image_url")
 		}
 
 		// 发送OPTIONS预检请求
@@ -140,8 +145,8 @@ func processBytes(client cycletls.CycleTLS, cookie string, bytes []byte, imageMa
 		// 上传文件
 		_, err = makeUploadRequest(client, uploadImageUrl, bytes)
 		if err != nil {
-			fmt.Printf("makeUploadRequest ERR: %v\n", err)
-			return
+			//fmt.Printf("makeUploadRequest ERR: %v\n", err)
+			return fmt.Errorf("makeUploadRequest ERR: %v\n", err)
 		}
 		//fmt.Println(resp)
 
@@ -160,22 +165,26 @@ func processBytes(client cycletls.CycleTLS, cookie string, bytes []byte, imageMa
 		// 替换数组中的元素
 		contentArray[index] = privateFile
 	}
+	return nil
 }
 
 // 获取文件字节数组的函数
 func fetchImageBytes(url string) ([]byte, error) {
 	resp, err := http.Get(url)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("fetchImageBytes ERR: %v\n", err)
 	}
 	defer resp.Body.Close()
 
 	return ioutil.ReadAll(resp.Body)
 }
 
-func createRequestBody(c *gin.Context, cookie string, openAIReq *model.OpenAIChatCompletionRequest) map[string]interface{} {
+func createRequestBody(c *gin.Context, cookie string, openAIReq *model.OpenAIChatCompletionRequest) (map[string]interface{}, error) {
 	// 处理消息中的图像 URL
-	processMessages(c, cookie, openAIReq.Messages)
+	err := processMessages(c, cookie, openAIReq.Messages)
+	if err != nil {
+		return nil, err
+	}
 
 	// 创建请求体
 	return map[string]interface{}{
@@ -189,7 +198,7 @@ func createRequestBody(c *gin.Context, cookie string, openAIReq *model.OpenAICha
 			"run_with_another_model": false,
 			"writingContent":         nil,
 		},
-	}
+	}, nil
 }
 
 func createImageRequestBody(c *gin.Context, cookie string, openAIReq *model.OpenAIImagesGenerationRequest) map[string]interface{} {
@@ -433,7 +442,7 @@ func makeOptionsRequest(client cycletls.CycleTLS, uploadUrl string) (cycletls.Re
 
 func makeUploadRequest(client cycletls.CycleTLS, uploadUrl string, fileBytes []byte) (cycletls.Response, error) {
 	return client.Do(uploadUrl, cycletls.Options{
-		Timeout: 30,
+		Timeout: 10 * 60 * 60,
 		Method:  "PUT",
 		Body:    string(fileBytes),
 		Headers: map[string]string{
@@ -463,7 +472,13 @@ func ChatForOpenAI(c *gin.Context) {
 		return
 	}
 
-	requestBody := createRequestBody(c, cookie, &openAIReq)
+	requestBody, err := createRequestBody(c, cookie, &openAIReq)
+
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
 	jsonData, err := json.Marshal(requestBody)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Failed to marshal request body"})
@@ -702,7 +717,8 @@ func pollTaskStatus(c *gin.Context, client cycletls.CycleTLS, taskIDs []string, 
 
 			// 发送请求
 			response, err := client.Do(url, cycletls.Options{
-				Method: "GET",
+				Timeout: 10 * 60 * 60,
+				Method:  "GET",
 				Headers: map[string]string{
 					"Cookie": cookie,
 				},
@@ -730,7 +746,7 @@ func pollTaskStatus(c *gin.Context, client cycletls.CycleTLS, taskIDs []string, 
 			}
 
 			// 等待1秒后重试
-			time.Sleep(time.Second)
+			time.Sleep(500 * time.Millisecond)
 		}
 	}
 
