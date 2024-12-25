@@ -41,6 +41,10 @@ type OpenAIChatCompletionRequest struct {
 
 // ChatForOpenAI 处理OpenAI聊天请求
 func ChatForOpenAI(c *gin.Context) {
+
+	client := cycletls.Init()
+	defer safeClose(client)
+
 	var openAIReq model.OpenAIChatCompletionRequest
 	if err := c.BindJSON(&openAIReq); err != nil {
 		logger.Errorf(c.Request.Context(), err.Error())
@@ -87,7 +91,7 @@ func ChatForOpenAI(c *gin.Context) {
 			c.JSON(500, gin.H{"error": "Failed to marshal request body"})
 			return
 		}
-		resp, err := ImageProcess(c, cookie, model.OpenAIImagesGenerationRequest{
+		resp, err := ImageProcess(c, client, cookie, model.OpenAIImagesGenerationRequest{
 			Model:  openAIReq.Model,
 			Prompt: openAIReq.GetUserContent()[0],
 		})
@@ -160,7 +164,7 @@ func ChatForOpenAI(c *gin.Context) {
 		}
 	}
 
-	requestBody, err := createRequestBody(c, cookie, &openAIReq)
+	requestBody, err := createRequestBody(c, client, cookie, &openAIReq)
 
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
@@ -173,8 +177,6 @@ func ChatForOpenAI(c *gin.Context) {
 		return
 	}
 
-	client := cycletls.Init()
-
 	if openAIReq.Stream {
 		handleStreamRequest(c, client, cookie, jsonData, openAIReq.Model)
 	} else {
@@ -183,8 +185,9 @@ func ChatForOpenAI(c *gin.Context) {
 
 }
 
-func processMessages(c *gin.Context, cookie string, messages []model.OpenAIChatMessage) error {
-	client := cycletls.Init()
+func processMessages(c *gin.Context, client cycletls.CycleTLS, cookie string, messages []model.OpenAIChatMessage) error {
+	//client := cycletls.Init()
+	//defer client.Close()
 
 	for i, message := range messages {
 		if contentArray, ok := message.Content.([]interface{}); ok {
@@ -319,11 +322,11 @@ func fetchImageBytes(url string) ([]byte, error) {
 	return ioutil.ReadAll(resp.Body)
 }
 
-func createRequestBody(c *gin.Context, cookie string, openAIReq *model.OpenAIChatCompletionRequest) (map[string]interface{}, error) {
+func createRequestBody(c *gin.Context, client cycletls.CycleTLS, cookie string, openAIReq *model.OpenAIChatCompletionRequest) (map[string]interface{}, error) {
 	// 处理消息中的图像 URL
-	err := processMessages(c, cookie, openAIReq.Messages)
+	err := processMessages(c, client, cookie, openAIReq.Messages)
 	if err != nil {
-		fmt.Errorf("processMessages err: %v", err)
+		logger.Errorf(c.Request.Context(), "processMessages err: %v", err)
 		return nil, fmt.Errorf("processMessages err: %v", err)
 	}
 
@@ -422,6 +425,8 @@ func handleStreamResponse(c *gin.Context, sseChan <-chan cycletls.SSEResponse, r
 			continue
 		}
 
+		logger.Debug(c.Request.Context(), data)
+
 		// 处理 "data: " 前缀
 		data = strings.TrimSpace(data)
 		if !strings.HasPrefix(data, "data: ") {
@@ -452,8 +457,9 @@ func handleStreamResponse(c *gin.Context, sseChan <-chan cycletls.SSEResponse, r
 			// 删除临时会话
 			if config.AutoDelChat == 1 {
 				go func() {
-					c := cycletls.Init()
-					makeDeleteRequest(c, cookie, projectId)
+					client := cycletls.Init()
+					defer safeClose(client)
+					makeDeleteRequest(client, cookie, projectId)
 				}()
 			}
 			return handleMessageResult(c, responseId, model, jsonData)
@@ -668,6 +674,7 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie str
 	var content string
 	for scanner.Scan() {
 		line := scanner.Text()
+		logger.Debug(c.Request.Context(), line)
 		if strings.HasPrefix(line, "data: ") {
 			data := strings.TrimPrefix(line, "data: ")
 			var parsedResponse struct {
@@ -741,6 +748,10 @@ func OpenaiModels(c *gin.Context) {
 }
 
 func ImagesForOpenAI(c *gin.Context) {
+
+	client := cycletls.Init()
+	defer safeClose(client)
+
 	var openAIReq model.OpenAIImagesGenerationRequest
 	if err := c.BindJSON(&openAIReq); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
@@ -752,7 +763,7 @@ func ImagesForOpenAI(c *gin.Context) {
 		return
 	}
 
-	resp, err := ImageProcess(c, cookie, openAIReq)
+	resp, err := ImageProcess(c, client, cookie, openAIReq)
 	if err != nil {
 		logger.Errorf(c.Request.Context(), fmt.Sprintf("ImageProcess err  %v\n", err))
 		c.JSON(http.StatusInternalServerError, model.OpenAIErrorResponse{
@@ -769,7 +780,7 @@ func ImagesForOpenAI(c *gin.Context) {
 
 }
 
-func ImageProcess(c *gin.Context, cookie string, openAIReq model.OpenAIImagesGenerationRequest) (*model.OpenAIImagesGenerationResponse, error) {
+func ImageProcess(c *gin.Context, client cycletls.CycleTLS, cookie string, openAIReq model.OpenAIImagesGenerationRequest) (*model.OpenAIImagesGenerationResponse, error) {
 	requestBody := createImageRequestBody(c, cookie, &openAIReq)
 	jsonData, err := json.Marshal(requestBody)
 	if err != nil {
@@ -777,7 +788,8 @@ func ImageProcess(c *gin.Context, cookie string, openAIReq model.OpenAIImagesGen
 		return nil, err
 	}
 
-	client := cycletls.Init()
+	//client := cycletls.Init()
+	//defer client.Close()
 
 	response, err := makeImageRequest(client, jsonData, cookie)
 
@@ -820,8 +832,9 @@ func ImageProcess(c *gin.Context, cookie string, openAIReq model.OpenAIImagesGen
 		// 删除临时会话
 		if config.AutoDelChat == 1 {
 			go func() {
-				c := cycletls.Init()
-				makeDeleteRequest(c, cookie, projectId)
+				client := cycletls.Init()
+				defer safeClose(client)
+				makeDeleteRequest(client, cookie, projectId)
 			}()
 		}
 
@@ -954,4 +967,13 @@ func getBase64ByUrl(url string) (string, error) {
 	// Encode the image data to Base64
 	base64Str := base64.StdEncoding.EncodeToString(imgData)
 	return base64Str, nil
+}
+
+func safeClose(client cycletls.CycleTLS) {
+	if client.ReqChan != nil {
+		close(client.ReqChan)
+	}
+	if client.RespChan != nil {
+		close(client.RespChan)
+	}
 }
