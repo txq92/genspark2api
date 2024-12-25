@@ -15,6 +15,12 @@ _觉得有点意思的话 别忘了点个🌟_
 - [x] 支持流式输出
 - [x] 支持识别图片/文件多轮对话
 - [x] 支持文生图
+  - **flux**
+  - **flux-speed**
+  - **flux-pro/ultra**
+  - **ideogram**
+  - **recraft-v3**
+  - **dall-e-3**
 - [x] 支持自定义请求头校验值(Authorization)
 - [x] 支持cookie池(随机)
 - [x] 可配置自动删除对话记录
