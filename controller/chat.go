@@ -425,6 +425,8 @@ func handleStreamResponse(c *gin.Context, sseChan <-chan cycletls.SSEResponse, r
 			continue
 		}
 
+		logger.Debug(c.Request.Context(), data)
+
 		// 处理 "data: " 前缀
 		data = strings.TrimSpace(data)
 		if !strings.HasPrefix(data, "data: ") {
@@ -672,6 +674,7 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie str
 	var content string
 	for scanner.Scan() {
 		line := scanner.Text()
+		logger.Debug(c.Request.Context(), line)
 		if strings.HasPrefix(line, "data: ") {
 			data := strings.TrimPrefix(line, "data: ")
 			var parsedResponse struct {
