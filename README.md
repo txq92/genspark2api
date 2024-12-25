@@ -31,11 +31,25 @@ _觉得有点意思的话 别忘了点个🌟_
 
 ### 示例:
 
-略
+<span><img src="docs/img2.png" width="800"/></span>
 
 ## 如何使用
 
 略
+
+## 如何集成NextChat
+
+填 接口地址(ip:端口/域名) 及 API-Key(`PROXY_SECRET`),其它的随便填随便选。
+
+> 如果自己没有搭建NextChat面板,这里有个已经搭建好的可以使用 [NeatChat](https://ai.aytsao.cn/)
+
+<span><img src="docs/img5.png" width="800"/></span>
+
+## 如何集成one-api
+
+填 `BaseURL`(ip:端口/域名) 及 密钥(`PROXY_SECRET`),其它的随便填随便选。
+
+<span><img src="docs/img3.png" width="800"/></span>
 
 ## 部署
 
@@ -136,3 +150,7 @@ Render 可以直接部署 docker 镜像,不需要 fork 仓库：[Render](https:/
     3. 点击ask请求，请求头中的**cookie**即为环境变量**GS_COOKIE**所需值。(其中`session_id=f9c60******cb6d`
        是必须的，其他内容可要可不要，即环境变量`GS_COOKIE=session_id=f9c60******cb6d`)
        ![img.png](docs/img.png)
+
+## 其他
+
+**Genspark**(注册领取1个月Plus): [https://www.genspark.ai](https://www.genspark.ai/invite?invite_code=YjVjMGRkYWVMZmE4YUw5MDc0TDM1ODlMZDYwMzQ4OTJlNmEx)
