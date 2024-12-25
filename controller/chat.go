@@ -90,21 +90,44 @@ func ChatForOpenAI(c *gin.Context) {
 				content = append(content, fmt.Sprintf("![Image](%s)", item.URL))
 			}
 
-			streamResp := createStreamResponse(responseId, openAIReq.Model, model.OpenAIDelta{Content: strings.Join(content, "\n"), Role: "assistant"}, nil)
-			err := sendSSEvent(c, streamResp)
-			if err != nil {
-				logger.Errorf(c.Request.Context(), err.Error())
-				c.JSON(http.StatusInternalServerError, model.OpenAIErrorResponse{
-					OpenAIError: model.OpenAIError{
-						Message: err.Error(),
-						Type:    "request_error",
-						Code:    "500",
+			if openAIReq.Stream {
+				streamResp := createStreamResponse(responseId, openAIReq.Model, model.OpenAIDelta{Content: strings.Join(content, "\n"), Role: "assistant"}, nil)
+				err := sendSSEvent(c, streamResp)
+				if err != nil {
+					logger.Errorf(c.Request.Context(), err.Error())
+					c.JSON(http.StatusInternalServerError, model.OpenAIErrorResponse{
+						OpenAIError: model.OpenAIError{
+							Message: err.Error(),
+							Type:    "request_error",
+							Code:    "500",
+						},
+					})
+					return
+				}
+				c.SSEvent("", " [DONE]")
+				return
+			} else {
+				finishReason := "stop"
+				// 创建并返回 OpenAIChatCompletionResponse 结构
+				resp := model.OpenAIChatCompletionResponse{
+					ID:      fmt.Sprintf(responseIDFormat, time.Now().Format("20060102150405")),
+					Object:  "chat.completion",
+					Created: time.Now().Unix(),
+					Model:   openAIReq.Model,
+					Choices: []model.OpenAIChoice{
+						{
+							Message: model.OpenAIMessage{
+								Role:    "assistant",
+								Content: strings.Join(content, "\n"),
+							},
+							FinishReason: &finishReason,
+						},
 					},
-				})
+				}
+				c.JSON(200, resp)
 				return
 			}
-			c.SSEvent("", " [DONE]")
-			return
+
 		}
 	}
 
