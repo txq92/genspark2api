@@ -51,6 +51,7 @@ func ChatForOpenAI(c *gin.Context) {
 				Code:    "500",
 			},
 		})
+		return
 	}
 	cookie, err := common.RandomElement(config.GSCookies)
 	if err != nil {
@@ -62,6 +63,7 @@ func ChatForOpenAI(c *gin.Context) {
 				Code:    "500",
 			},
 		})
+		return
 	}
 
 	if lo.Contains(common.ImageModelList, openAIReq.Model) {
@@ -102,7 +104,7 @@ func ChatForOpenAI(c *gin.Context) {
 				return
 			}
 			c.SSEvent("", " [DONE]")
-
+			return
 		}
 	}
 
@@ -745,8 +747,7 @@ func ImageProcess(c *gin.Context, cookie string, openAIReq model.OpenAIImagesGen
 		if config.AutoDelChat == 1 {
 			go func() {
 				c := cycletls.Init()
-				resp, err2 := makeDeleteRequest(c, cookie, projectId)
-				fmt.Println(resp, err2)
+				makeDeleteRequest(c, cookie, projectId)
 			}()
 		}
 
