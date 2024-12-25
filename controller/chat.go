@@ -512,34 +512,21 @@ func sendSSEvent(c *gin.Context, response model.OpenAIChatCompletionResponse) er
 
 // makeRequest 发送HTTP请求
 func makeRequest(client cycletls.CycleTLS, jsonData []byte, cookie string, isStream bool) (cycletls.Response, error) {
-	//accept := "application/json"
-	//if isStream {
-	//	accept = "text/event-stream"
-	//}
+	accept := "application/json"
+	if isStream {
+		accept = "text/event-stream"
+	}
 
 	return client.Do(apiEndpoint, cycletls.Options{
-		Ja3:       "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-21,29-23-24,0",
-		UserAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-		Timeout:   10 * 60 * 60,
-		Body:      string(jsonData),
-		Method:    "POST",
+		Timeout: 10 * 60 * 60,
+		Body:    string(jsonData),
+		Method:  "POST",
 		Headers: map[string]string{
-			"accept":             "*/*",
-			"accept-encoding":    "gzip, deflate, br, zstd",
-			"accept-language":    "zh-CN,zh;q=0.9,en;q=0.8",
-			"content-type":       "application/json",
-			"cookie":             cookie,
-			"origin":             "https://www.genspark.ai",
-			"priority":           "u=1, i",
-			"request-id":         "|7c75c269da3f454094f1d7ece84e0dc7.53ad5c9c3fc74740",
-			"sec-ch-ua":          "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"",
-			"sec-ch-ua-mobile":   "?0",
-			"sec-ch-ua-platform": "\"macOS\"",
-			"sec-fetch-dest":     "empty",
-			"sec-fetch-mode":     "cors",
-			"sec-fetch-site":     "same-origin",
-			"traceparent":        "00-7c75c269da3f454094f1d7ece84e0dc7-53ad5c9c3fc74740-01",
-			"user-agent":         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+			"Content-Type": "application/json",
+			"Accept":       accept,
+			"Origin":       baseURL,
+			"Referer":      baseURL + "/",
+			"Cookie":       cookie,
 		},
 	}, "POST")
 }
