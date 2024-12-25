@@ -155,7 +155,7 @@ Render 可以直接部署 docker 镜像,不需要 fork 仓库：[Render](https:/
 
 1. 打开**F12**开发者工具。
 2. 发起对话。
-    3. 点击ask请求，请求头中的**cookie**即为环境变量**GS_COOKIE**所需值。(其中`session_id=f9c60******cb6d`
+3. 点击ask请求，请求头中的**cookie**即为环境变量**GS_COOKIE**所需值。(其中`session_id=f9c60******cb6d`
        是必须的，其他内容可要可不要，即环境变量`GS_COOKIE=session_id=f9c60******cb6d`)
        ![img.png](docs/img.png)
 
