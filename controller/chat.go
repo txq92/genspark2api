@@ -661,8 +661,6 @@ func makeStreamRequest(c *gin.Context, client cycletls.CycleTLS, jsonData []byte
 
 // handleNonStreamRequest 处理非流式请求
 func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string, jsonData []byte, modelName string) {
-	client = cycletls.Init()
-	defer safeClose(client)
 	response, err := makeRequest(client, jsonData, cookie, false)
 	if err != nil {
 		logger.Errorf(c.Request.Context(), "makeRequest err: %v", err)
