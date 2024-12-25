@@ -69,6 +69,18 @@ func ChatForOpenAI(c *gin.Context) {
 	if lo.Contains(common.ImageModelList, openAIReq.Model) {
 		responseId := fmt.Sprintf(responseIDFormat, time.Now().Format("20060102150405"))
 
+		if len(openAIReq.GetUserContent()) == 0 {
+			logger.Errorf(c.Request.Context(), "user content is null")
+			c.JSON(http.StatusInternalServerError, model.OpenAIErrorResponse{
+				OpenAIError: model.OpenAIError{
+					Message: "Invalid request parameters",
+					Type:    "request_error",
+					Code:    "500",
+				},
+			})
+			return
+		}
+
 		jsonData, err := json.Marshal(openAIReq.GetUserContent()[0])
 		if err != nil {
 			logger.Errorf(c.Request.Context(), err.Error())
