@@ -120,3 +120,19 @@ type OpenaiModelListResponse struct {
 	Object string                `json:"object"`
 	Data   []OpenaiModelResponse `json:"data"`
 }
+
+func (r OpenAIChatCompletionRequest) GetUserContent() []string {
+	var userContent []string
+
+	for i := len(r.Messages) - 1; i >= 0; i-- {
+		if r.Messages[i].Role == "user" {
+			switch contentObj := r.Messages[i].Content.(type) {
+			case string:
+				userContent = append(userContent, contentObj)
+			}
+			break
+		}
+	}
+
+	return userContent
+}

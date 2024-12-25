@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"genspark2api/common"
 	"genspark2api/common/config"
+	logger "genspark2api/common/loggger"
 	"genspark2api/model"
 	"github.com/deanxv/CycleTLS/cycletls"
 	"github.com/gin-gonic/gin"
+	"github.com/samber/lo"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -35,6 +37,96 @@ type OpenAIChatMessage struct {
 type OpenAIChatCompletionRequest struct {
 	Messages []OpenAIChatMessage
 	Model    string
+}
+
+// ChatForOpenAI 处理OpenAI聊天请求
+func ChatForOpenAI(c *gin.Context) {
+	var openAIReq model.OpenAIChatCompletionRequest
+	if err := c.BindJSON(&openAIReq); err != nil {
+		logger.Errorf(c.Request.Context(), err.Error())
+		c.JSON(http.StatusInternalServerError, model.OpenAIErrorResponse{
+			OpenAIError: model.OpenAIError{
+				Message: "Invalid request parameters",
+				Type:    "request_error",
+				Code:    "500",
+			},
+		})
+	}
+	cookie, err := common.RandomElement(config.GSCookies)
+	if err != nil {
+		logger.Errorf(c.Request.Context(), err.Error())
+		c.JSON(http.StatusInternalServerError, model.OpenAIErrorResponse{
+			OpenAIError: model.OpenAIError{
+				Message: err.Error(),
+				Type:    "request_error",
+				Code:    "500",
+			},
+		})
+	}
+
+	if lo.Contains(common.ImageModelList, openAIReq.Model) {
+		responseId := fmt.Sprintf(responseIDFormat, time.Now().Format("20060102150405"))
+
+		resp, err := ImageProcess(c, cookie, model.OpenAIImagesGenerationRequest{
+			Model:  openAIReq.Model,
+			Prompt: openAIReq.GetUserContent()[0],
+		})
+		if err != nil {
+			logger.Errorf(c.Request.Context(), err.Error())
+			c.JSON(http.StatusInternalServerError, model.OpenAIErrorResponse{
+				OpenAIError: model.OpenAIError{
+					Message: err.Error(),
+					Type:    "request_error",
+					Code:    "500",
+				},
+			})
+			return
+		} else {
+			data := resp.Data
+			var content []string
+			for _, item := range data {
+				content = append(content, fmt.Sprintf("![Image](%s)", item.URL))
+			}
+
+			streamResp := createStreamResponse(responseId, openAIReq.Model, model.OpenAIDelta{Content: strings.Join(content, "\n"), Role: "assistant"}, nil)
+			err := sendSSEvent(c, streamResp)
+			if err != nil {
+				logger.Errorf(c.Request.Context(), err.Error())
+				c.JSON(http.StatusInternalServerError, model.OpenAIErrorResponse{
+					OpenAIError: model.OpenAIError{
+						Message: err.Error(),
+						Type:    "request_error",
+						Code:    "500",
+					},
+				})
+				return
+			}
+			c.SSEvent("", " [DONE]")
+
+		}
+	}
+
+	requestBody, err := createRequestBody(c, cookie, &openAIReq)
+
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Failed to marshal request body"})
+		return
+	}
+
+	client := cycletls.Init()
+
+	if openAIReq.Stream {
+		handleStreamRequest(c, client, cookie, jsonData, openAIReq.Model)
+	} else {
+		handleNonStreamRequest(c, client, cookie, jsonData, openAIReq.Model)
+	}
+
 }
 
 func fetchImageAsBase64(url string) (string, error) {
@@ -86,7 +178,10 @@ func processUrl(c *gin.Context, client cycletls.CycleTLS, cookie string, url str
 			return err
 		}
 
-		processBytes(client, cookie, bytes, imageMap, index, contentArray)
+		err = processBytes(client, cookie, bytes, imageMap, index, contentArray)
+		if err != nil {
+			return err
+		}
 	} else {
 		// 尝试解析base64
 		var bytes []byte
@@ -104,7 +199,10 @@ func processUrl(c *gin.Context, client cycletls.CycleTLS, cookie string, url str
 			return err
 		}
 
-		processBytes(client, cookie, bytes, imageMap, index, contentArray)
+		err = processBytes(client, cookie, bytes, imageMap, index, contentArray)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -120,13 +218,13 @@ func processBytes(client cycletls.CycleTLS, cookie string, bytes []byte, imageMa
 		response, err := makeGetUploadUrlRequest(client, cookie)
 		if err != nil {
 			//fmt.Printf("makeUploadRequest ERR: %v\n", err)
-			return err
+			return fmt.Errorf("makeUploadRequest ERR: %v\n", err)
 		}
 
 		var jsonResponse map[string]interface{}
 		if err := json.Unmarshal([]byte(response.Body), &jsonResponse); err != nil {
-			fmt.Printf("Unmarshal ERR: %v\n", err)
-			return err
+			//fmt.Printf("Unmarshal ERR: %v\n", err)
+			return fmt.Errorf("Unmarshal ERR: %v\n", err)
 		}
 
 		uploadImageUrl, ok := jsonResponse["data"].(map[string]interface{})["upload_image_url"].(string)
@@ -460,41 +558,6 @@ func makeUploadRequest(client cycletls.CycleTLS, uploadUrl string, fileBytes []b
 	}, "PUT")
 }
 
-// ChatForOpenAI 处理OpenAI聊天请求
-func ChatForOpenAI(c *gin.Context) {
-	var openAIReq model.OpenAIChatCompletionRequest
-	if err := c.BindJSON(&openAIReq); err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
-		return
-	}
-	cookie, err := common.RandomElement(config.GSCookies)
-	if err != nil {
-		return
-	}
-
-	requestBody, err := createRequestBody(c, cookie, &openAIReq)
-
-	if err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
-		return
-	}
-
-	jsonData, err := json.Marshal(requestBody)
-	if err != nil {
-		c.JSON(500, gin.H{"error": "Failed to marshal request body"})
-		return
-	}
-
-	client := cycletls.Init()
-
-	if openAIReq.Stream {
-		handleStreamRequest(c, client, cookie, jsonData, openAIReq.Model)
-	} else {
-		handleNonStreamRequest(c, client, cookie, jsonData, openAIReq.Model)
-	}
-
-}
-
 // handleStreamRequest 处理流式请求
 func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string, jsonData []byte, model string) {
 	c.Header("Content-Type", "text/event-stream")
@@ -622,11 +685,29 @@ func ImagesForOpenAI(c *gin.Context) {
 		return
 	}
 
+	resp, err := ImageProcess(c, cookie, openAIReq)
+	if err != nil {
+		fmt.Printf("ImageProcess err: %v\n", err)
+		c.JSON(http.StatusInternalServerError, model.OpenAIErrorResponse{
+			OpenAIError: model.OpenAIError{
+				Message: err.Error(),
+				Type:    "request_error",
+				Code:    "500",
+			},
+		})
+		return
+	} else {
+		c.JSON(200, resp)
+	}
+
+}
+
+func ImageProcess(c *gin.Context, cookie string, openAIReq model.OpenAIImagesGenerationRequest) (*model.OpenAIImagesGenerationResponse, error) {
 	requestBody := createImageRequestBody(c, cookie, &openAIReq)
 	jsonData, err := json.Marshal(requestBody)
 	if err != nil {
-		c.JSON(500, gin.H{"error": "Failed to marshal request body"})
-		return
+		//c.JSON(500, gin.H{"error": "Failed to marshal request body"})
+		return nil, err
 	}
 
 	client := cycletls.Init()
@@ -634,24 +715,21 @@ func ImagesForOpenAI(c *gin.Context) {
 	response, err := makeImageRequest(client, jsonData, cookie)
 
 	if err != nil {
-		return
+		return nil, err
 	} else {
 		// 解析响应获取task_ids
-		taskIDs := extractTaskIDs(response.Body)
+		projectId, taskIDs := extractTaskIDs(response.Body)
 		if len(taskIDs) == 0 {
-			c.JSON(500, gin.H{"error": "No task IDs found"})
-			return
+			return nil, fmt.Errorf("no task IDs found")
 		}
 
 		// 获取所有图片URL
 		imageURLs := pollTaskStatus(c, client, taskIDs, cookie)
 
 		// 创建响应对象
-		response := model.OpenAIImagesGenerationResponse{
+		response := &model.OpenAIImagesGenerationResponse{
 			Created: time.Now().Unix(),
 			Data:    make([]*model.OpenAIImagesGenerationDataResponse, 0, len(imageURLs)),
-			// 如果有建议词可以在这里添加
-			Suggestions: []string{},
 		}
 
 		// 遍历 imageURLs 组装数据
@@ -663,16 +741,45 @@ func ImagesForOpenAI(c *gin.Context) {
 			response.Data = append(response.Data, data)
 		}
 
-		c.JSON(200, response)
+		// 删除临时会话
+		if config.AutoDelChat == 1 {
+			go func() {
+				c := cycletls.Init()
+				resp, err2 := makeDeleteRequest(c, cookie, projectId)
+				fmt.Println(resp, err2)
+			}()
+		}
+
+		//c.JSON(200, response)
+		return response, nil
 	}
 }
 
-func extractTaskIDs(responseBody string) []string {
+func extractTaskIDs(responseBody string) (string, []string) {
 	var taskIDs []string
+	var projectId string
 
 	// 分行处理响应
 	lines := strings.Split(responseBody, "\n")
 	for _, line := range lines {
+
+		// 找到包含project_id的行
+		if strings.Contains(line, "project_start") {
+			// 去掉"data: "前缀
+			jsonStr := strings.TrimPrefix(line, "data: ")
+
+			// 解析JSON
+			var jsonResp struct {
+				ProjectID string `json:"id"`
+			}
+			if err := json.Unmarshal([]byte(jsonStr), &jsonResp); err != nil {
+				continue
+			}
+
+			// 保存project_id
+			projectId = jsonResp.ProjectID
+		}
+
 		// 找到包含task_id的行
 		if strings.Contains(line, "task_id") {
 			// 去掉"data: "前缀
@@ -704,7 +811,7 @@ func extractTaskIDs(responseBody string) []string {
 			}
 		}
 	}
-	return taskIDs
+	return projectId, taskIDs
 }
 
 func pollTaskStatus(c *gin.Context, client cycletls.CycleTLS, taskIDs []string, cookie string) []string {
