@@ -11,6 +11,8 @@ func SetApiRouter(router *gin.Engine) {
 	//router.Use(gzip.Gzip(gzip.DefaultCompression))
 	router.Use(middleware.RequestRateLimit())
 
+	router.GET("/")
+
 	//https://api.openai.com/v1/images/generations
 	v1Router := router.Group("/v1")
 	v1Router.Use(middleware.OpenAIAuth())

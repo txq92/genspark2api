@@ -69,10 +69,17 @@ func ChatForOpenAI(c *gin.Context) {
 	if lo.Contains(common.ImageModelList, openAIReq.Model) {
 		responseId := fmt.Sprintf(responseIDFormat, time.Now().Format("20060102150405"))
 
+		jsonData, err := json.Marshal(openAIReq.GetUserContent()[0])
+		if err != nil {
+			logger.Errorf(c.Request.Context(), err.Error())
+			c.JSON(500, gin.H{"error": "Failed to marshal request body"})
+			return
+		}
 		resp, err := ImageProcess(c, cookie, model.OpenAIImagesGenerationRequest{
 			Model:  openAIReq.Model,
 			Prompt: openAIReq.GetUserContent()[0],
 		})
+
 		if err != nil {
 			logger.Errorf(c.Request.Context(), err.Error())
 			c.JSON(http.StatusInternalServerError, model.OpenAIErrorResponse{
@@ -91,7 +98,7 @@ func ChatForOpenAI(c *gin.Context) {
 			}
 
 			if openAIReq.Stream {
-				streamResp := createStreamResponse(responseId, openAIReq.Model, model.OpenAIDelta{Content: strings.Join(content, "\n"), Role: "assistant"}, nil)
+				streamResp := createStreamResponse(responseId, openAIReq.Model, jsonData, model.OpenAIDelta{Content: strings.Join(content, "\n"), Role: "assistant"}, nil)
 				err := sendSSEvent(c, streamResp)
 				if err != nil {
 					logger.Errorf(c.Request.Context(), err.Error())
@@ -107,6 +114,11 @@ func ChatForOpenAI(c *gin.Context) {
 				c.SSEvent("", " [DONE]")
 				return
 			} else {
+
+				jsonBytes, _ := json.Marshal(openAIReq.Messages)
+				promptTokens := common.CountTokens(string(jsonBytes))
+				completionTokens := common.CountTokens(strings.Join(content, "\n"))
+
 				finishReason := "stop"
 				// 创建并返回 OpenAIChatCompletionResponse 结构
 				resp := model.OpenAIChatCompletionResponse{
@@ -122,6 +134,11 @@ func ChatForOpenAI(c *gin.Context) {
 							},
 							FinishReason: &finishReason,
 						},
+					},
+					Usage: model.OpenAIUsage{
+						PromptTokens:     promptTokens,
+						CompletionTokens: completionTokens,
+						TotalTokens:      promptTokens + completionTokens,
 					},
 				}
 				c.JSON(200, resp)
@@ -154,21 +171,6 @@ func ChatForOpenAI(c *gin.Context) {
 
 }
 
-func fetchImageAsBase64(url string) (string, error) {
-	resp, err := http.Get(url)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	data, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	return base64.StdEncoding.EncodeToString(data), nil
-}
-
 func processMessages(c *gin.Context, cookie string, messages []model.OpenAIChatMessage) error {
 	client := cycletls.Init()
 
@@ -181,7 +183,8 @@ func processMessages(c *gin.Context, cookie string, messages []model.OpenAIChatM
 							if url, ok := imageMap["url"].(string); ok {
 								err := processUrl(c, client, cookie, url, imageMap, j, contentArray)
 								if err != nil {
-									return err
+									logger.Errorf(c.Request.Context(), fmt.Sprintf("processUrl err  %v\n", err))
+									return fmt.Errorf("processUrl err: %v", err)
 								}
 							}
 						}
@@ -199,13 +202,14 @@ func processUrl(c *gin.Context, client cycletls.CycleTLS, cookie string, url str
 		// 下载文件
 		bytes, err := fetchImageBytes(url)
 		if err != nil {
-			//logger.Errorf(c.Request.Context(), fmt.Sprintf("fetchImageBytes err  %v\n", err))
-			return err
+			logger.Errorf(c.Request.Context(), fmt.Sprintf("fetchImageBytes err  %v\n", err))
+			return fmt.Errorf("fetchImageBytes err  %v\n", err)
 		}
 
-		err = processBytes(client, cookie, bytes, imageMap, index, contentArray)
+		err = processBytes(c, client, cookie, bytes, imageMap, index, contentArray)
 		if err != nil {
-			return err
+			logger.Errorf(c.Request.Context(), fmt.Sprintf("processBytes err  %v\n", err))
+			return fmt.Errorf("processBytes err  %v\n", err)
 		}
 	} else {
 		// 尝试解析base64
@@ -220,19 +224,20 @@ func processUrl(c *gin.Context, client cycletls.CycleTLS, cookie string, url str
 
 		bytes, err = base64.StdEncoding.DecodeString(base64Str)
 		if err != nil {
-			//fmt.Printf("base64解码失败: %v\n", err)
-			return err
+			logger.Errorf(c.Request.Context(), fmt.Sprintf("base64.StdEncoding.DecodeString err  %v\n", err))
+			return fmt.Errorf("base64.StdEncoding.DecodeString err: %v\n", err)
 		}
 
-		err = processBytes(client, cookie, bytes, imageMap, index, contentArray)
+		err = processBytes(c, client, cookie, bytes, imageMap, index, contentArray)
 		if err != nil {
-			return err
+			logger.Errorf(c.Request.Context(), fmt.Sprintf("processBytes err  %v\n", err))
+			return fmt.Errorf("processBytes err: %v\n", err)
 		}
 	}
 	return nil
 }
 
-func processBytes(client cycletls.CycleTLS, cookie string, bytes []byte, imageMap map[string]interface{}, index int, contentArray []interface{}) error {
+func processBytes(c *gin.Context, client cycletls.CycleTLS, cookie string, bytes []byte, imageMap map[string]interface{}, index int, contentArray []interface{}) error {
 	// 检查是否为图片类型
 	contentType := http.DetectContentType(bytes)
 	if strings.HasPrefix(contentType, "image/") {
@@ -242,14 +247,14 @@ func processBytes(client cycletls.CycleTLS, cookie string, bytes []byte, imageMa
 	} else {
 		response, err := makeGetUploadUrlRequest(client, cookie)
 		if err != nil {
-			//fmt.Printf("makeUploadRequest ERR: %v\n", err)
-			return fmt.Errorf("makeUploadRequest ERR: %v\n", err)
+			logger.Errorf(c.Request.Context(), fmt.Sprintf("makeGetUploadUrlRequest err  %v\n", err))
+			return fmt.Errorf("makeGetUploadUrlRequest err: %v\n", err)
 		}
 
 		var jsonResponse map[string]interface{}
 		if err := json.Unmarshal([]byte(response.Body), &jsonResponse); err != nil {
-			//fmt.Printf("Unmarshal ERR: %v\n", err)
-			return fmt.Errorf("Unmarshal ERR: %v\n", err)
+			logger.Errorf(c.Request.Context(), fmt.Sprintf("Unmarshal err  %v\n", err))
+			return fmt.Errorf("Unmarshal err: %v\n", err)
 		}
 
 		uploadImageUrl, ok := jsonResponse["data"].(map[string]interface{})["upload_image_url"].(string)
@@ -268,8 +273,8 @@ func processBytes(client cycletls.CycleTLS, cookie string, bytes []byte, imageMa
 		// 上传文件
 		_, err = makeUploadRequest(client, uploadImageUrl, bytes)
 		if err != nil {
-			//fmt.Printf("makeUploadRequest ERR: %v\n", err)
-			return fmt.Errorf("makeUploadRequest ERR: %v\n", err)
+			logger.Errorf(c.Request.Context(), fmt.Sprintf("makeUploadRequest err  %v\n", err))
+			return fmt.Errorf("makeUploadRequest err: %v\n", err)
 		}
 		//fmt.Println(resp)
 
@@ -295,7 +300,7 @@ func processBytes(client cycletls.CycleTLS, cookie string, bytes []byte, imageMa
 func fetchImageBytes(url string) ([]byte, error) {
 	resp, err := http.Get(url)
 	if err != nil {
-		return nil, fmt.Errorf("fetchImageBytes ERR: %v\n", err)
+		return nil, fmt.Errorf("http.Get err: %v\n", err)
 	}
 	defer resp.Body.Close()
 
@@ -306,7 +311,8 @@ func createRequestBody(c *gin.Context, cookie string, openAIReq *model.OpenAICha
 	// 处理消息中的图像 URL
 	err := processMessages(c, cookie, openAIReq.Messages)
 	if err != nil {
-		return nil, err
+		fmt.Errorf("processMessages err: %v", err)
+		return nil, fmt.Errorf("processMessages err: %v", err)
 	}
 
 	// 创建请求体
@@ -367,7 +373,9 @@ func createImageRequestBody(c *gin.Context, cookie string, openAIReq *model.Open
 }
 
 // createStreamResponse 创建流式响应
-func createStreamResponse(responseId, modelName string, delta model.OpenAIDelta, finishReason *string) model.OpenAIChatCompletionResponse {
+func createStreamResponse(responseId, modelName string, jsonData []byte, delta model.OpenAIDelta, finishReason *string) model.OpenAIChatCompletionResponse {
+	promptTokens := common.CountTokens(string(jsonData))
+	completionTokens := common.CountTokens(delta.Content)
 	return model.OpenAIChatCompletionResponse{
 		ID:      responseId,
 		Object:  "chat.completion.chunk",
@@ -380,11 +388,16 @@ func createStreamResponse(responseId, modelName string, delta model.OpenAIDelta,
 				FinishReason: finishReason,
 			},
 		},
+		Usage: model.OpenAIUsage{
+			PromptTokens:     promptTokens,
+			CompletionTokens: completionTokens,
+			TotalTokens:      promptTokens + completionTokens,
+		},
 	}
 }
 
 // handleStreamResponse 处理流式响应
-func handleStreamResponse(c *gin.Context, sseChan <-chan cycletls.SSEResponse, responseId, cookie, model string) bool {
+func handleStreamResponse(c *gin.Context, sseChan <-chan cycletls.SSEResponse, responseId, cookie, model string, jsonData []byte) bool {
 	var projectId string
 
 	for response := range sseChan {
@@ -406,6 +419,7 @@ func handleStreamResponse(c *gin.Context, sseChan <-chan cycletls.SSEResponse, r
 
 		var event map[string]interface{}
 		if err := json.Unmarshal([]byte(data), &event); err != nil {
+			logger.Warnf(c.Request.Context(), "Failed to unmarshal event: %v", err)
 			continue
 		}
 
@@ -418,7 +432,8 @@ func handleStreamResponse(c *gin.Context, sseChan <-chan cycletls.SSEResponse, r
 		case "project_start":
 			projectId, _ = event["id"].(string)
 		case "message_field_delta":
-			if err := handleMessageFieldDelta(c, event, responseId, model); err != nil {
+			if err := handleMessageFieldDelta(c, event, responseId, model, jsonData); err != nil {
+				logger.Warnf(c.Request.Context(), "handleMessageFieldDelta err: %v", err)
 				return false
 			}
 		case "message_result":
@@ -429,14 +444,14 @@ func handleStreamResponse(c *gin.Context, sseChan <-chan cycletls.SSEResponse, r
 					makeDeleteRequest(c, cookie, projectId)
 				}()
 			}
-			return handleMessageResult(c, responseId, model)
+			return handleMessageResult(c, responseId, model, jsonData)
 		}
 	}
 	return false
 }
 
 // handleMessageFieldDelta 处理消息字段增量
-func handleMessageFieldDelta(c *gin.Context, event map[string]interface{}, responseId, modelName string) error {
+func handleMessageFieldDelta(c *gin.Context, event map[string]interface{}, responseId, modelName string, jsonData []byte) error {
 	fieldName, ok := event["field_name"].(string)
 	if !ok || fieldName != "session_state.answer" {
 		return nil
@@ -448,16 +463,17 @@ func handleMessageFieldDelta(c *gin.Context, event map[string]interface{}, respo
 		return nil
 	}
 
-	streamResp := createStreamResponse(responseId, modelName, model.OpenAIDelta{Content: delta, Role: "assistant"}, nil)
+	streamResp := createStreamResponse(responseId, modelName, jsonData, model.OpenAIDelta{Content: delta, Role: "assistant"}, nil)
 	return sendSSEvent(c, streamResp)
 }
 
 // handleMessageResult 处理消息结果
-func handleMessageResult(c *gin.Context, responseId, modelName string) bool {
+func handleMessageResult(c *gin.Context, responseId, modelName string, jsonData []byte) bool {
 	finishReason := "stop"
 
-	streamResp := createStreamResponse(responseId, modelName, model.OpenAIDelta{}, &finishReason)
+	streamResp := createStreamResponse(responseId, modelName, jsonData, model.OpenAIDelta{}, &finishReason)
 	if err := sendSSEvent(c, streamResp); err != nil {
+		logger.Warnf(c.Request.Context(), "sendSSEvent err: %v", err)
 		return false
 	}
 	c.SSEvent("", " [DONE]")
@@ -468,6 +484,7 @@ func handleMessageResult(c *gin.Context, responseId, modelName string) bool {
 func sendSSEvent(c *gin.Context, response model.OpenAIChatCompletionResponse) error {
 	jsonResp, err := json.Marshal(response)
 	if err != nil {
+		logger.Errorf(c.Request.Context(), "Failed to marshal response: %v", err)
 		return err
 	}
 	c.SSEvent("", " "+string(jsonResp))
@@ -592,16 +609,17 @@ func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string
 	responseId := fmt.Sprintf(responseIDFormat, time.Now().Format("20060102150405"))
 
 	c.Stream(func(w io.Writer) bool {
-		sseChan, err := makeStreamRequest(client, jsonData, cookie)
+		sseChan, err := makeStreamRequest(c, client, jsonData, cookie)
 		if err != nil {
+			logger.Errorf(c.Request.Context(), "makeStreamRequest err: %v", err)
 			return false
 		}
 
-		return handleStreamResponse(c, sseChan, responseId, cookie, model)
+		return handleStreamResponse(c, sseChan, responseId, cookie, model, jsonData)
 	})
 }
 
-func makeStreamRequest(client cycletls.CycleTLS, jsonData []byte, cookie string) (<-chan cycletls.SSEResponse, error) {
+func makeStreamRequest(c *gin.Context, client cycletls.CycleTLS, jsonData []byte, cookie string) (<-chan cycletls.SSEResponse, error) {
 	options := cycletls.Options{
 		Timeout: 10 * 60 * 60,
 		Body:    string(jsonData),
@@ -617,7 +635,8 @@ func makeStreamRequest(client cycletls.CycleTLS, jsonData []byte, cookie string)
 
 	sseChan, err := client.DoSSE(apiEndpoint, options, "POST")
 	if err != nil {
-		return nil, err
+		logger.Errorf(c, "Failed to make stream request: %v", err)
+		return nil, fmt.Errorf("Failed to make stream request: %v", err)
 	}
 	return sseChan, nil
 }
@@ -626,6 +645,7 @@ func makeStreamRequest(client cycletls.CycleTLS, jsonData []byte, cookie string)
 func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string, jsonData []byte, modelName string) {
 	response, err := makeRequest(client, jsonData, cookie, false)
 	if err != nil {
+		logger.Errorf(c.Request.Context(), "makeRequest err: %v", err)
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
@@ -644,6 +664,7 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie str
 				Content   string `json:"content"`
 			}
 			if err := json.Unmarshal([]byte(data), &parsedResponse); err != nil {
+				logger.Warnf(c.Request.Context(), "Failed to unmarshal response: %v", err)
 				continue
 			}
 			if parsedResponse.Type == "message_result" {
@@ -657,6 +678,9 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie str
 		c.JSON(500, gin.H{"error": "No valid response content"})
 		return
 	}
+
+	promptTokens := common.CountTokens(string(jsonData))
+	completionTokens := common.CountTokens(content)
 
 	finishReason := "stop"
 	// 创建并返回 OpenAIChatCompletionResponse 结构
@@ -673,6 +697,11 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie str
 				},
 				FinishReason: &finishReason,
 			},
+		},
+		Usage: model.OpenAIUsage{
+			PromptTokens:     promptTokens,
+			CompletionTokens: completionTokens,
+			TotalTokens:      promptTokens + completionTokens,
 		},
 	}
 
@@ -707,12 +736,13 @@ func ImagesForOpenAI(c *gin.Context) {
 	}
 	cookie, err := common.RandomElement(config.GSCookies)
 	if err != nil {
+		logger.Errorf(c.Request.Context(), err.Error())
 		return
 	}
 
 	resp, err := ImageProcess(c, cookie, openAIReq)
 	if err != nil {
-		fmt.Printf("ImageProcess err: %v\n", err)
+		logger.Errorf(c.Request.Context(), fmt.Sprintf("ImageProcess err  %v\n", err))
 		c.JSON(http.StatusInternalServerError, model.OpenAIErrorResponse{
 			OpenAIError: model.OpenAIError{
 				Message: err.Error(),
