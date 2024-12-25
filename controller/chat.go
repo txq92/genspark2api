@@ -793,6 +793,15 @@ func ImageProcess(c *gin.Context, cookie string, openAIReq model.OpenAIImagesGen
 				URL:           url,
 				RevisedPrompt: openAIReq.Prompt,
 			}
+
+			if openAIReq.ResponseFormat == "b64_json" {
+				base64Str, err := getBase64ByUrl(data.URL)
+				if err != nil {
+					logger.Errorf(c.Request.Context(), fmt.Sprintf("getBase64ByUrl err  %v\n", err))
+					return nil, fmt.Errorf("getBase64ByUrl err: %v\n", err)
+				}
+				data.B64Json = "data:image/webp;base64," + base64Str
+			}
 			response.Data = append(response.Data, data)
 		}
 
@@ -912,4 +921,25 @@ func pollTaskStatus(c *gin.Context, client cycletls.CycleTLS, taskIDs []string, 
 	}
 
 	return imageURLs
+}
+
+func getBase64ByUrl(url string) (string, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch image: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("received non-200 status code: %d", resp.StatusCode)
+	}
+
+	imgData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read image data: %w", err)
+	}
+
+	// Encode the image data to Base64
+	base64Str := base64.StdEncoding.EncodeToString(imgData)
+	return base64Str, nil
 }
