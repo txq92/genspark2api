@@ -140,8 +140,8 @@ func ChatForOpenAI(c *gin.Context) {
 			} else {
 
 				jsonBytes, _ := json.Marshal(openAIReq.Messages)
-				promptTokens := common.CountTokens(string(jsonBytes))
-				completionTokens := common.CountTokens(strings.Join(content, "\n"))
+				promptTokens := common.CountTokenText(string(jsonBytes), openAIReq.Model)
+				completionTokens := common.CountTokenText(strings.Join(content, "\n"), openAIReq.Model)
 
 				finishReason := "stop"
 				// 创建并返回 OpenAIChatCompletionResponse 结构
@@ -397,8 +397,8 @@ func createImageRequestBody(c *gin.Context, cookie string, openAIReq *model.Open
 
 // createStreamResponse 创建流式响应
 func createStreamResponse(responseId, modelName string, jsonData []byte, delta model.OpenAIDelta, finishReason *string) model.OpenAIChatCompletionResponse {
-	promptTokens := common.CountTokens(string(jsonData))
-	completionTokens := common.CountTokens(delta.Content)
+	promptTokens := common.CountTokenText(string(jsonData), modelName)
+	completionTokens := common.CountTokenText(delta.Content, modelName)
 	return model.OpenAIChatCompletionResponse{
 		ID:      responseId,
 		Object:  "chat.completion.chunk",
@@ -433,7 +433,7 @@ func handleStreamResponse(c *gin.Context, sseChan <-chan cycletls.SSEResponse, r
 			continue
 		}
 
-		logger.Debug(c.Request.Context(), data)
+		logger.Debug(c.Request.Context(), strings.TrimSpace(data))
 
 		if common.IsCloudflareChallenge(data) {
 			logger.Errorf(c.Request.Context(), "Detected Cloudflare Challenge Page")
@@ -688,7 +688,7 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie str
 	var content string
 	for scanner.Scan() {
 		line := scanner.Text()
-		logger.Debug(c.Request.Context(), line)
+		logger.Debug(c.Request.Context(), strings.TrimSpace(line))
 
 		if common.IsCloudflareChallenge(line) {
 			logger.Errorf(c.Request.Context(), "Detected Cloudflare Challenge Page")
@@ -719,8 +719,8 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie str
 		return
 	}
 
-	promptTokens := common.CountTokens(string(jsonData))
-	completionTokens := common.CountTokens(content)
+	promptTokens := common.CountTokenText(string(jsonData), modelName)
+	completionTokens := common.CountTokenText(content, modelName)
 
 	finishReason := "stop"
 	// 创建并返回 OpenAIChatCompletionResponse 结构
