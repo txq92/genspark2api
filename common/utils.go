@@ -7,6 +7,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	_ "github.com/pkoukk/tiktoken-go"
 	"math/rand"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -129,17 +130,27 @@ func IsBase64(s string) bool {
 }
 
 func IsCloudflareChallenge(data string) bool {
-	// 检查关键特征
-	cfIndicators := []string{
-		"cf-chl",             // Cloudflare challenge 标识
-		"challenge-platform", // challenge 平台标识
-		"_cf_chl_opt",        // Cloudflare 选项
-		"Just a moment...",   // 典型的 CF 等待页面标题
-		"cdn-cgi",            // Cloudflare CDN 路径
+	// 检查基本的 HTML 结构
+	htmlPattern := `^<!DOCTYPE html><html.*?><head>.*?</head><body.*?>.*?</body></html>$`
+
+	// 检查 Cloudflare 特征
+	cfPatterns := []string{
+		`<title>Just a moment\.\.\.</title>`,          // 标题特征
+		`window\._cf_chl_opt`,                         // CF 配置对象
+		`challenge-platform/h/b/orchestrate/chl_page`, // CF challenge 路径
+		`cdn-cgi/challenge-platform`,                  // CDN 路径特征
+		`<meta http-equiv="refresh" content="\d+">`,   // 刷新 meta 标签
 	}
 
-	for _, indicator := range cfIndicators {
-		if strings.Contains(data, indicator) {
+	// 首先检查整体 HTML 结构
+	matched, _ := regexp.MatchString(htmlPattern, strings.TrimSpace(data))
+	if !matched {
+		return false
+	}
+
+	// 检查是否包含 Cloudflare 特征
+	for _, pattern := range cfPatterns {
+		if matched, _ := regexp.MatchString(pattern, data); matched {
 			return true
 		}
 	}
