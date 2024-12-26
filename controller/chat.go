@@ -41,7 +41,6 @@ type OpenAIChatCompletionRequest struct {
 
 // ChatForOpenAI 处理OpenAI聊天请求
 func ChatForOpenAI(c *gin.Context) {
-
 	client := cycletls.Init()
 	defer safeClose(client)
 
@@ -533,6 +532,8 @@ func makeRequest(client cycletls.CycleTLS, jsonData []byte, cookie string, isStr
 
 	return client.Do(apiEndpoint, cycletls.Options{
 		Timeout: 10 * 60 * 60,
+		Ja3:     "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-17513,29-23-24,0",
+		Proxy:   config.ProxyUrl, // 在每个请求中设置代理
 		Body:    string(jsonData),
 		Method:  "POST",
 		Headers: map[string]string{
@@ -551,6 +552,7 @@ func makeImageRequest(client cycletls.CycleTLS, jsonData []byte, cookie string) 
 
 	return client.Do(apiEndpoint, cycletls.Options{
 		Timeout: 10 * 60 * 60,
+		Proxy:   config.ProxyUrl, // 在每个请求中设置代理
 		Body:    string(jsonData),
 		Method:  "POST",
 		Headers: map[string]string{
@@ -568,6 +570,7 @@ func makeDeleteRequest(client cycletls.CycleTLS, cookie, projectId string) (cycl
 
 	return client.Do(fmt.Sprintf(deleteEndpoint, projectId), cycletls.Options{
 		Timeout: 10 * 60 * 60,
+		Proxy:   config.ProxyUrl, // 在每个请求中设置代理
 		Method:  "GET",
 		Headers: map[string]string{
 			"Content-Type": "application/json",
@@ -585,6 +588,7 @@ func makeGetUploadUrlRequest(client cycletls.CycleTLS, cookie string) (cycletls.
 
 	return client.Do(fmt.Sprintf(uploadEndpoint), cycletls.Options{
 		Timeout: 10 * 60 * 60,
+		Proxy:   config.ProxyUrl, // 在每个请求中设置代理
 		Method:  "GET",
 		Headers: map[string]string{
 			"Content-Type": "application/json",
@@ -596,25 +600,26 @@ func makeGetUploadUrlRequest(client cycletls.CycleTLS, cookie string) (cycletls.
 	}, "GET")
 }
 
-func makeOptionsRequest(client cycletls.CycleTLS, uploadUrl string) (cycletls.Response, error) {
-	return client.Do(uploadUrl, cycletls.Options{
-		Method: "OPTIONS",
-		Headers: map[string]string{
-			"Accept":                         "*/*",
-			"Access-Control-Request-Headers": "x-ms-blob-type",
-			"Access-Control-Request-Method":  "PUT",
-			"Origin":                         "https://www.genspark.ai",
-			"Sec-Fetch-Dest":                 "empty",
-			"Sec-Fetch-Mode":                 "cors",
-			"Sec-Fetch-Site":                 "cross-site",
-		},
-		UserAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-	}, "OPTIONS")
-}
+//func makeOptionsRequest(client cycletls.CycleTLS, uploadUrl string) (cycletls.Response, error) {
+//	return client.Do(uploadUrl, cycletls.Options{
+//		Method: "OPTIONS",
+//		Headers: map[string]string{
+//			"Accept":                         "*/*",
+//			"Access-Control-Request-Headers": "x-ms-blob-type",
+//			"Access-Control-Request-Method":  "PUT",
+//			"Origin":                         "https://www.genspark.ai",
+//			"Sec-Fetch-Dest":                 "empty",
+//			"Sec-Fetch-Mode":                 "cors",
+//			"Sec-Fetch-Site":                 "cross-site",
+//		},
+//		UserAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+//	}, "OPTIONS")
+//}
 
 func makeUploadRequest(client cycletls.CycleTLS, uploadUrl string, fileBytes []byte) (cycletls.Response, error) {
 	return client.Do(uploadUrl, cycletls.Options{
 		Timeout: 10 * 60 * 60,
+		Proxy:   config.ProxyUrl, // 在每个请求中设置代理
 		Method:  "PUT",
 		Body:    string(fileBytes),
 		Headers: map[string]string{
@@ -654,6 +659,7 @@ func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string
 func makeStreamRequest(c *gin.Context, client cycletls.CycleTLS, jsonData []byte, cookie string) (<-chan cycletls.SSEResponse, error) {
 	options := cycletls.Options{
 		Timeout: 10 * 60 * 60,
+		Proxy:   config.ProxyUrl, // 在每个请求中设置代理
 		Body:    string(jsonData),
 		Method:  "POST",
 		Headers: map[string]string{
@@ -934,6 +940,7 @@ func pollTaskStatus(c *gin.Context, client cycletls.CycleTLS, taskIDs []string, 
 			// 发送请求
 			response, err := client.Do(url, cycletls.Options{
 				Timeout: 10 * 60 * 60,
+				Proxy:   config.ProxyUrl, // 在每个请求中设置代理
 				Method:  "GET",
 				Headers: map[string]string{
 					"Cookie": cookie,
