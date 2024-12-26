@@ -127,3 +127,22 @@ func IsBase64(s string) bool {
 	_, err := base64.StdEncoding.DecodeString(base64Data)
 	return err == nil
 }
+
+func IsCloudflareChallenge(data string) bool {
+	// 检查关键特征
+	cfIndicators := []string{
+		"cf-chl",             // Cloudflare challenge 标识
+		"challenge-platform", // challenge 平台标识
+		"_cf_chl_opt",        // Cloudflare 选项
+		"Just a moment...",   // 典型的 CF 等待页面标题
+		"cdn-cgi",            // Cloudflare CDN 路径
+	}
+
+	for _, indicator := range cfIndicators {
+		if strings.Contains(data, indicator) {
+			return true
+		}
+	}
+
+	return false
+}

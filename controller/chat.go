@@ -427,6 +427,12 @@ func handleStreamResponse(c *gin.Context, sseChan <-chan cycletls.SSEResponse, r
 
 		logger.Debug(c.Request.Context(), data)
 
+		if common.IsCloudflareChallenge(data) {
+			logger.Errorf(c.Request.Context(), "Detected Cloudflare Challenge Page")
+			c.JSON(500, gin.H{"error": "Detected Cloudflare Challenge Page"})
+			return false
+		}
+
 		// 处理 "data: " 前缀
 		data = strings.TrimSpace(data)
 		if !strings.HasPrefix(data, "data: ") {
@@ -675,6 +681,13 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie str
 	for scanner.Scan() {
 		line := scanner.Text()
 		logger.Debug(c.Request.Context(), line)
+
+		if common.IsCloudflareChallenge(line) {
+			logger.Errorf(c.Request.Context(), "Detected Cloudflare Challenge Page")
+			c.JSON(500, gin.H{"error": "Detected Cloudflare Challenge Page"})
+			return
+		}
+
 		if strings.HasPrefix(line, "data: ") {
 			data := strings.TrimPrefix(line, "data: ")
 			var parsedResponse struct {
