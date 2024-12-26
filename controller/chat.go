@@ -532,7 +532,6 @@ func makeRequest(client cycletls.CycleTLS, jsonData []byte, cookie string, isStr
 
 	return client.Do(apiEndpoint, cycletls.Options{
 		Timeout: 10 * 60 * 60,
-		Ja3:     "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-17513,29-23-24,0",
 		Proxy:   config.ProxyUrl, // 在每个请求中设置代理
 		Body:    string(jsonData),
 		Method:  "POST",
@@ -632,8 +631,6 @@ func makeUploadRequest(client cycletls.CycleTLS, uploadUrl string, fileBytes []b
 			"Sec-Fetch-Mode": "cors",
 			"Sec-Fetch-Site": "cross-site",
 		},
-		Ja3:       "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-17513,29-23-24,0",
-		UserAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
 	}, "PUT")
 }
 

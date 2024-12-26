@@ -31,6 +31,7 @@ _觉得有点意思的话 别忘了点个🌟_
 - [x] 支持自定义请求头校验值(Authorization)
 - [x] 支持cookie池(随机)
 - [x] 可配置自动删除对话记录
+- [x] 可配置代理请求(环境变量`PROXY_URL`)
 
 ### 接口文档:
 
@@ -150,6 +151,7 @@ Render 可以直接部署 docker 镜像,不需要 fork 仓库：[Render](https:/
 3. `GS_COOKIE=******`  cookie (多个请以,分隔)
 4. `AUTO_DEL_CHAT=0`  [可选]对话完成自动删除[0:关闭,1:开启]
 5. `REQUEST_RATE_LIMIT=60`  [可选]每分钟下的单ip请求速率限制,默认:60次/min
+6. `PROXY_URL=http://127.0.0.1:10801`  [可选]代理
 
 ### cookie获取方式
 
