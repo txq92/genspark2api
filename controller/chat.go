@@ -70,6 +70,14 @@ func ChatForOpenAI(c *gin.Context) {
 		return
 	}
 
+	// model简单映射
+	if openAIReq.Model == "claude-3.5-sonnet" {
+		openAIReq.Model = "claude-3-5-sonnet"
+	}
+	if openAIReq.Model == "claude-3.5-haiku" {
+		openAIReq.Model = "claude-3-5-haiku"
+	}
+
 	if lo.Contains(common.ImageModelList, openAIReq.Model) {
 		responseId := fmt.Sprintf(responseIDFormat, time.Now().Format("20060102150405"))
 
