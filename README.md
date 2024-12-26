@@ -16,8 +16,8 @@ _觉得有点意思的话 别忘了点个🌟_
     - **gpt-4o**
     - **gpt-4o-mini**
     - **o1-preview**
-    - **claude-3.5-sonnet**/**claude-3-5-sonnet**
-    - **claude-3.5-haiku**/**claude-3-5-haiku**
+    - **claude-3-5-sonnet**
+    - **claude-3-5-haiku**
     - **gemini-1.5-pro**
     - **gemini-1.5-flash**
 - [x] 支持识别**图片**/**文件**多轮对话
