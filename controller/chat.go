@@ -351,8 +351,7 @@ func createRequestBody(c *gin.Context, client cycletls.CycleTLS, cookie string, 
 		},
 	}, nil
 }
-
-func createImageRequestBody(c *gin.Context, cookie string, openAIReq *model.OpenAIImagesGenerationRequest) map[string]interface{} {
+func createImageRequestBody(c *gin.Context, cookie string, openAIReq *model.OpenAIImagesGenerationRequest) (map[string]interface{}, error) {
 
 	if openAIReq.Model == "dall-e-3" {
 		openAIReq.Model = "dalle-3"
@@ -371,11 +370,63 @@ func createImageRequestBody(c *gin.Context, cookie string, openAIReq *model.Open
 	}
 
 	// 创建消息数组
-	messages := []map[string]interface{}{
-		{
-			"role":    "user",
-			"content": openAIReq.Prompt,
-		},
+	var messages []map[string]interface{}
+
+	if openAIReq.Image != "" {
+		var base64Data string
+
+		if strings.HasPrefix(openAIReq.Image, "http://") || strings.HasPrefix(openAIReq.Image, "https://") {
+			// 下载文件
+			bytes, err := fetchImageBytes(openAIReq.Image)
+			if err != nil {
+				logger.Errorf(c.Request.Context(), fmt.Sprintf("fetchImageBytes err  %v\n", err))
+				return nil, fmt.Errorf("fetchImageBytes err  %v\n", err)
+			}
+
+			contentType := http.DetectContentType(bytes)
+			if strings.HasPrefix(contentType, "image/") {
+				// 是图片类型，转换为base64
+				base64Data = "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(bytes)
+			}
+		} else if common.IsImageBase64(openAIReq.Image) {
+			// 如果已经是 base64 格式
+			if !strings.HasPrefix(openAIReq.Image, "data:image") {
+				base64Data = "data:image/jpeg;base64," + openAIReq.Image
+			} else {
+				base64Data = openAIReq.Image
+			}
+		}
+
+		// 构建包含图片的消息
+		if base64Data != "" {
+			messages = []map[string]interface{}{
+				{
+					"role": "user",
+					"content": []map[string]interface{}{
+						{
+							"type": "image_url",
+							"image_url": map[string]interface{}{
+								"url": base64Data,
+							},
+						},
+						{
+							"type": "text",
+							"text": openAIReq.Prompt,
+						},
+					},
+				},
+			}
+		}
+	}
+
+	// 如果没有图片或处理图片失败，使用纯文本消息
+	if len(messages) == 0 {
+		messages = []map[string]interface{}{
+			{
+				"role":    "user",
+				"content": openAIReq.Prompt,
+			},
+		}
 	}
 
 	// 创建请求体
@@ -391,7 +442,7 @@ func createImageRequestBody(c *gin.Context, cookie string, openAIReq *model.Open
 			"imageModelMap":  map[string]interface{}{},
 			"writingContent": nil,
 		},
-	}
+	}, nil
 }
 
 // createStreamResponse 创建流式响应
@@ -805,7 +856,10 @@ func ImagesForOpenAI(c *gin.Context) {
 }
 
 func ImageProcess(c *gin.Context, client cycletls.CycleTLS, cookie string, openAIReq model.OpenAIImagesGenerationRequest) (*model.OpenAIImagesGenerationResponse, error) {
-	requestBody := createImageRequestBody(c, cookie, &openAIReq)
+	requestBody, err := createImageRequestBody(c, cookie, &openAIReq)
+	if err != nil {
+		return nil, err
+	}
 	jsonData, err := json.Marshal(requestBody)
 	if err != nil {
 		//c.JSON(500, gin.H{"error": "Failed to marshal request body"})
