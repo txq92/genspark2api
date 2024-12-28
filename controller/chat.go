@@ -69,14 +69,6 @@ func ChatForOpenAI(c *gin.Context) {
 		return
 	}
 
-	// model简单映射
-	if openAIReq.Model == "claude-3.5-sonnet" {
-		openAIReq.Model = "claude-3-5-sonnet"
-	}
-	if openAIReq.Model == "claude-3.5-haiku" {
-		openAIReq.Model = "claude-3-5-haiku"
-	}
-
 	if lo.Contains(common.ImageModelList, openAIReq.Model) {
 		responseId := fmt.Sprintf(responseIDFormat, time.Now().Format("20060102150405"))
 
@@ -337,18 +329,26 @@ func createRequestBody(c *gin.Context, client cycletls.CycleTLS, cookie string, 
 		return nil, fmt.Errorf("processMessages err: %v", err)
 	}
 
+	currentQueryString := fmt.Sprintf("type=%s", chatType)
+	// 查找 key 对应的 value
+	if chatId, ok := config.ModelChatMap[openAIReq.Model]; ok {
+		currentQueryString = fmt.Sprintf("&id=%s&type=%s", chatId, chatType)
+	}
+
 	// 创建请求体
 	return map[string]interface{}{
-		"type":                 chatType,
-		"current_query_string": "type=chat",
+		"type": chatType,
+		//"current_query_string": fmt.Sprintf("&type=%s", chatType),
+		"current_query_string": currentQueryString,
 		"messages":             openAIReq.Messages,
-		//"user_s_input":         openAIReq.Messages[len(openAIReq.Messages)-1].Content,
+		//"user_s_input":  "100字的量子力学文章",
 		"action_params": map[string]interface{}{},
 		"extra_data": map[string]interface{}{
 			"models":                 []string{openAIReq.Model},
 			"run_with_another_model": false,
 			"writingContent":         nil,
 		},
+		//"g_recaptcha_token": helper.GetTimeString(),
 	}, nil
 }
 func createImageRequestBody(c *gin.Context, cookie string, openAIReq *model.OpenAIImagesGenerationRequest) (map[string]interface{}, error) {
