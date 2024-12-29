@@ -16,7 +16,7 @@ func CheckEnvVariable() {
 		logger.FatalLog("环境变量 GS_COOKIE 未设置")
 	}
 	if config.ModelChatMapStr != "" {
-		pattern := `^([a-zA-Z0-9\-]+=([a-zA-Z0-9\-]+))(,[a-zA-Z0-9\-]+=([a-zA-Z0-9\-]+))*$`
+		pattern := `^([a-zA-Z0-9\-\/]+=([a-zA-Z0-9\-]+))(,[a-zA-Z0-9\-\/]+=([a-zA-Z0-9\-]+))*$`
 		match, _ := regexp.MatchString(pattern, config.ModelChatMapStr)
 		if !match {
 			logger.FatalLog("环境变量 MODEL_CHAT_MAP 设置有误")
