@@ -34,9 +34,9 @@ func CheckEnvVariable() {
 
 			config.ModelChatMap = modelChatMap
 
-			if config.AutoDelChat == 1 {
-				logger.FatalLog("环境变量 MODEL_CHAT_MAP 有值时,环境变量 AUTO_DEL_CHAT 不能设置为1")
-			}
+			//if config.AutoDelChat == 1 {
+			//	logger.FatalLog("环境变量 MODEL_CHAT_MAP 有值时,环境变量 AUTO_DEL_CHAT 不能设置为1")
+			//}
 
 			cookies := strings.Split(config.GSCookie, ",")
 			if len(cookies) > 1 {

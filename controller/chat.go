@@ -332,7 +332,12 @@ func createRequestBody(c *gin.Context, client cycletls.CycleTLS, cookie string, 
 	currentQueryString := fmt.Sprintf("type=%s", chatType)
 	// 查找 key 对应的 value
 	if chatId, ok := config.ModelChatMap[openAIReq.Model]; ok {
-		currentQueryString = fmt.Sprintf("&id=%s&type=%s", chatId, chatType)
+		currentQueryString = fmt.Sprintf("id=%s&type=%s", chatId, chatType)
+	}
+
+	models := []string{openAIReq.Model}
+	if !lo.Contains(common.TextModelList, openAIReq.Model) {
+		models = common.MixtureModelList
 	}
 
 	// 创建请求体
@@ -344,7 +349,7 @@ func createRequestBody(c *gin.Context, client cycletls.CycleTLS, cookie string, 
 		//"user_s_input":  "100字的量子力学文章",
 		"action_params": map[string]interface{}{},
 		"extra_data": map[string]interface{}{
-			"models":                 []string{openAIReq.Model},
+			"models":                 models,
 			"run_with_another_model": false,
 			"writingContent":         nil,
 		},
@@ -616,6 +621,15 @@ func makeImageRequest(client cycletls.CycleTLS, jsonData []byte, cookie string) 
 }
 
 func makeDeleteRequest(client cycletls.CycleTLS, cookie, projectId string) (cycletls.Response, error) {
+
+	// 不删除环境变量中的map中的对话
+
+	for _, v := range config.ModelChatMap {
+		if v == projectId {
+			return cycletls.Response{}, nil
+		}
+	}
+
 	accept := "application/json"
 
 	return client.Do(fmt.Sprintf(deleteEndpoint, projectId), cycletls.Options{
