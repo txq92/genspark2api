@@ -164,7 +164,6 @@ Render 可以直接部署 docker 镜像,不需要 fork 仓库：[Render](https:/
 > **【注】** 其中`session_id=f9c60******cb6d`是必须的，其他内容可要可不要，即环境变量`GS_COOKIE=session_id=f9c60******cb6d`
 
 
-
 ![img.png](docs/img.png)
 
 ## 进阶配置
@@ -178,6 +177,17 @@ Render 可以直接部署 docker 镜像,不需要 fork 仓库：[Render](https:/
 3. 点击ask请求，此时最上方url中的`id`(或响应中的`id`)即为此对话唯一id。
    ![img.png](docs/img4.png)
 4. 配置环境变量 `MODEL_CHAT_MAP=claude-3-5-sonnet=3cdcc******474c5` (多个请以,分隔)
+
+## 报错排查
+
+> `Detected Cloudflare Challenge Page`
+> 
+被Cloudflare拦截出5s盾,可配置`PROXY_URL`。([IProyal](https://iproyal.cn/?r=244330))
+
+> `Cookie has reached the rate Limit`:
+>
+当前用户(cookie)到达速率限制,可降低并发。
+
 
 ## 其他
 

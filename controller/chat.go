@@ -497,8 +497,8 @@ func handleStreamResponse(c *gin.Context, sseChan <-chan cycletls.SSEResponse, r
 		}
 
 		if common.IsRateLimit(data) {
-			logger.Errorf(c.Request.Context(), "Cookie has reached the rate limit")
-			c.JSON(500, gin.H{"error": "Cookie has reached the rate limit"})
+			logger.Errorf(c.Request.Context(), "Cookie has reached the rate Limit")
+			c.JSON(500, gin.H{"error": "Cookie has reached the rate Limit"})
 			return false
 		}
 
@@ -773,8 +773,8 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie str
 		}
 
 		if common.IsRateLimit(line) {
-			logger.Errorf(c.Request.Context(), "Cookie has reached the rate limit")
-			c.JSON(500, gin.H{"error": "Cookie has reached the rate limit"})
+			logger.Errorf(c.Request.Context(), "Cookie has reached the rate Limit")
+			c.JSON(500, gin.H{"error": "Cookie has reached the rate Limit"})
 			return
 		}
 
