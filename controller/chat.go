@@ -762,8 +762,10 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie str
 	scanner := bufio.NewScanner(reader)
 
 	var content string
+	var firstline string
 	for scanner.Scan() {
 		line := scanner.Text()
+		firstline = line
 		logger.Debug(c.Request.Context(), strings.TrimSpace(line))
 
 		if common.IsCloudflareChallenge(line) {
@@ -797,6 +799,7 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie str
 	}
 
 	if content == "" {
+		logger.Errorf(c.Request.Context(), firstline)
 		c.JSON(500, gin.H{"error": "No valid response content"})
 		return
 	}
