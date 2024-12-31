@@ -159,7 +159,7 @@ func IsCloudflareChallenge(data string) bool {
 }
 
 func IsRateLimit(data string) bool {
-	if data == "Rate limit exceeded cf1" {
+	if data == "Rate limit exceeded cf1" || data == "Rate limit exceeded cf2" {
 		return true
 	}
 
