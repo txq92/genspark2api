@@ -733,6 +733,8 @@ func makeStreamRequest(c *gin.Context, client cycletls.CycleTLS, jsonData []byte
 		},
 	}
 
+	logger.Debug(c.Request.Context(), fmt.Sprintf("options: %v", options))
+
 	sseChan, err := client.DoSSE(apiEndpoint, options, "POST")
 	if err != nil {
 		logger.Errorf(c, "Failed to make stream request: %v", err)
