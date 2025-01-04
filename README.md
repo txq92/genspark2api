@@ -30,6 +30,7 @@ _觉得有点意思的话 别忘了点个🌟_
     - **dall-e-3**
 - [x] 支持自定义请求头校验值(Authorization)
 - [x] 支持cookie池(随机)
+- [x] 支持请求失败自动切换cookie重试(需配置cookie池)
 - [x] 可配置自动删除对话记录
 - [x] 可配置代理请求(环境变量`PROXY_URL`)
 - [x] 可配置Model绑定Chat(解决模型自动切换导致**降智**),详细请看[进阶配置](#进阶配置)。
@@ -184,9 +185,13 @@ Render 可以直接部署 docker 镜像,不需要 fork 仓库：[Render](https:/
 > 
 被Cloudflare拦截出5s盾,可配置`PROXY_URL`。([IProyal](https://iproyal.cn/?r=244330))
 
-> `Cookie has reached the rate Limit`:
+> `Genspark Service Unavailable`
 >
-当前用户(cookie)到达速率限制,可降低并发。
+Genspark官方服务不可用,请稍后再试。
+
+> `All cookies are temporarily unavailable.`
+>
+所有用户(cookie)均到达速率限制,更换用户cookie或稍后再试。
 
 
 ## 其他

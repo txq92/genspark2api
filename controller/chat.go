@@ -176,10 +176,12 @@ func ChatForOpenAI(c *gin.Context) {
 		return
 	}
 
+	cookieManager := config.NewCookieManager()
+
 	if openAIReq.Stream {
-		handleStreamRequest(c, client, cookie, jsonData, openAIReq.Model)
+		handleStreamRequest(c, client, cookieManager, jsonData, openAIReq.Model)
 	} else {
-		handleNonStreamRequest(c, client, cookie, jsonData, openAIReq.Model)
+		handleNonStreamRequest(c, client, cookieManager, jsonData, openAIReq.Model)
 	}
 
 }
@@ -706,22 +708,151 @@ func makeUploadRequest(client cycletls.CycleTLS, uploadUrl string, fileBytes []b
 }
 
 // handleStreamRequest 处理流式请求
-func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string, jsonData []byte, model string) {
+//func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string, jsonData []byte, model string) {
+//	c.Header("Content-Type", "text/event-stream")
+//	c.Header("Cache-Control", "no-cache")
+//	c.Header("Connection", "keep-alive")
+//
+//	responseId := fmt.Sprintf(responseIDFormat, time.Now().Format("20060102150405"))
+//
+//	c.Stream(func(w io.Writer) bool {
+//		sseChan, err := makeStreamRequest(c, client, jsonData, cookie)
+//		if err != nil {
+//			logger.Errorf(c.Request.Context(), "makeStreamRequest err: %v", err)
+//			return false
+//		}
+//
+//		return handleStreamResponse(c, sseChan, responseId, cookie, model, jsonData)
+//	})
+//}
+
+func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookieManager *config.CookieManager, jsonData []byte, modelName string) {
+	const (
+		errNoValidCookies         = "No valid cookies available"
+		errCloudflareChallengeMsg = "Detected Cloudflare Challenge Page"
+		errServiceUnavailable     = "Genspark Service Unavailable"
+	)
+
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
 
 	responseId := fmt.Sprintf(responseIDFormat, time.Now().Format("20060102150405"))
+	ctx := c.Request.Context()
+	maxRetries := len(cookieManager.Cookies)
+
+	cookie, err := cookieManager.GetNextCookie()
+	if err != nil {
+		logger.Errorf(ctx, "Failed to get initial cookie: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
+		return
+	}
 
 	c.Stream(func(w io.Writer) bool {
-		sseChan, err := makeStreamRequest(c, client, jsonData, cookie)
-		if err != nil {
-			logger.Errorf(c.Request.Context(), "makeStreamRequest err: %v", err)
-			return false
+		for attempt := 0; attempt < maxRetries; attempt++ {
+			sseChan, err := makeStreamRequest(c, client, jsonData, cookie)
+			if err != nil {
+				logger.Errorf(ctx, "makeStreamRequest err on attempt %d: %v", attempt+1, err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return false
+			}
+
+			var projectId string
+			isRateLimit := false
+
+			for response := range sseChan {
+				if response.Done {
+					break
+				}
+
+				data := response.Data
+				if data == "" {
+					continue
+				}
+
+				logger.Debug(ctx, strings.TrimSpace(data))
+
+				switch {
+				case common.IsCloudflareChallenge(data):
+					logger.Errorf(ctx, errCloudflareChallengeMsg)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": errCloudflareChallengeMsg})
+					return false
+				case common.IsServiceUnavailablePage(data):
+					logger.Errorf(ctx, errServiceUnavailable)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": errServiceUnavailable})
+					return false
+				case common.IsRateLimit(data):
+					isRateLimit = true
+					logger.Warnf(ctx, "Cookie rate limited, switching to next cookie, attempt %d/%d", attempt+1, maxRetries)
+					break
+				}
+
+				// 处理事件流数据
+				if shouldContinue := processStreamData(c, data, &projectId, cookie, responseId, modelName, jsonData); !shouldContinue {
+					return false
+				}
+			}
+
+			if !isRateLimit {
+				return true
+			}
+
+			// 获取下一个可用的cookie继续尝试
+			cookie, err = cookieManager.GetNextCookie()
+			if err != nil {
+				logger.Errorf(ctx, "No more valid cookies available after attempt %d", attempt+1)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
+				return false
+			}
 		}
 
-		return handleStreamResponse(c, sseChan, responseId, cookie, model, jsonData)
+		logger.Errorf(ctx, "All cookies exhausted after %d attempts", maxRetries)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "All cookies are temporarily unavailable."})
+		return false
 	})
+}
+
+// 处理流式数据的辅助函数，返回bool表示是否继续处理
+func processStreamData(c *gin.Context, data string, projectId *string, cookie, responseId, model string, jsonData []byte) bool {
+	data = strings.TrimSpace(data)
+	if !strings.HasPrefix(data, "data: ") {
+		return true
+	}
+	data = strings.TrimPrefix(data, "data: ")
+
+	var event map[string]interface{}
+	if err := json.Unmarshal([]byte(data), &event); err != nil {
+		logger.Errorf(c.Request.Context(), "Failed to unmarshal event: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return false
+	}
+
+	eventType, ok := event["type"].(string)
+	if !ok {
+		return true
+	}
+
+	switch eventType {
+	case "project_start":
+		*projectId, _ = event["id"].(string)
+	case "message_field_delta":
+		if err := handleMessageFieldDelta(c, event, responseId, model, jsonData); err != nil {
+			logger.Errorf(c.Request.Context(), "handleMessageFieldDelta err: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return false
+		}
+	case "message_result":
+		if config.AutoDelChat == 1 {
+			go func() {
+				client := cycletls.Init()
+				defer safeClose(client)
+				makeDeleteRequest(client, cookie, *projectId)
+			}()
+		}
+		return handleMessageResult(c, responseId, model, jsonData)
+	}
+
+	return true
 }
 
 func makeStreamRequest(c *gin.Context, client cycletls.CycleTLS, jsonData []byte, cookie string) (<-chan cycletls.SSEResponse, error) {
@@ -750,87 +881,211 @@ func makeStreamRequest(c *gin.Context, client cycletls.CycleTLS, jsonData []byte
 }
 
 // handleNonStreamRequest 处理非流式请求
-func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string, jsonData []byte, modelName string) {
-	response, err := makeRequest(client, jsonData, cookie, false)
+//
+//	func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string, jsonData []byte, modelName string) {
+//		response, err := makeRequest(client, jsonData, cookie, false)
+//		if err != nil {
+//			logger.Errorf(c.Request.Context(), "makeRequest err: %v", err)
+//			c.JSON(500, gin.H{"error": err.Error()})
+//			return
+//		}
+//
+//		reader := strings.NewReader(response.Body)
+//		scanner := bufio.NewScanner(reader)
+//
+//		var content string
+//		var firstline string
+//		for scanner.Scan() {
+//			line := scanner.Text()
+//			firstline = line
+//			logger.Debug(c.Request.Context(), strings.TrimSpace(line))
+//
+//			if common.IsCloudflareChallenge(line) {
+//				logger.Errorf(c.Request.Context(), "Detected Cloudflare Challenge Page")
+//				c.JSON(500, gin.H{"error": "Detected Cloudflare Challenge Page"})
+//				return
+//			}
+//
+//			if common.IsRateLimit(line) {
+//				logger.Errorf(c.Request.Context(), "Cookie has reached the rate Limit")
+//				c.JSON(500, gin.H{"error": "Cookie has reached the rate Limit"})
+//				return
+//			}
+//
+//			if strings.HasPrefix(line, "data: ") {
+//				data := strings.TrimPrefix(line, "data: ")
+//				var parsedResponse struct {
+//					Type      string `json:"type"`
+//					FieldName string `json:"field_name"`
+//					Content   string `json:"content"`
+//				}
+//				if err := json.Unmarshal([]byte(data), &parsedResponse); err != nil {
+//					logger.Warnf(c.Request.Context(), "Failed to unmarshal response: %v", err)
+//					continue
+//				}
+//				if parsedResponse.Type == "message_result" {
+//					content = parsedResponse.Content
+//					break
+//				}
+//			}
+//		}
+//
+//		if content == "" {
+//			logger.Errorf(c.Request.Context(), firstline)
+//			c.JSON(500, gin.H{"error": "No valid response content"})
+//			return
+//		}
+//
+//		promptTokens := common.CountTokenText(string(jsonData), modelName)
+//		completionTokens := common.CountTokenText(content, modelName)
+//
+//		finishReason := "stop"
+//		// 创建并返回 OpenAIChatCompletionResponse 结构
+//		resp := model.OpenAIChatCompletionResponse{
+//			ID:      fmt.Sprintf(responseIDFormat, time.Now().Format("20060102150405")),
+//			Object:  "chat.completion",
+//			Created: time.Now().Unix(),
+//			Model:   modelName,
+//			Choices: []model.OpenAIChoice{
+//				{
+//					Message: model.OpenAIMessage{
+//						Role:    "assistant",
+//						Content: content,
+//					},
+//					FinishReason: &finishReason,
+//				},
+//			},
+//			Usage: model.OpenAIUsage{
+//				PromptTokens:     promptTokens,
+//				CompletionTokens: completionTokens,
+//				TotalTokens:      promptTokens + completionTokens,
+//			},
+//		}
+//
+//		c.JSON(200, resp)
+//	}
+func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookieManager *config.CookieManager, jsonData []byte, modelName string) {
+	const (
+		errNoValidCookies         = "No valid cookies available"
+		errCloudflareChallengeMsg = "Detected Cloudflare Challenge Page"
+		errServiceUnavailable     = "Genspark Service Unavailable"
+		errNoValidResponseContent = "No valid response content"
+	)
+
+	ctx := c.Request.Context()
+	maxRetries := len(cookieManager.Cookies)
+
+	cookie, err := cookieManager.GetNextCookie()
 	if err != nil {
-		logger.Errorf(c.Request.Context(), "makeRequest err: %v", err)
-		c.JSON(500, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
 		return
 	}
 
-	reader := strings.NewReader(response.Body)
-	scanner := bufio.NewScanner(reader)
-
-	var content string
-	var firstline string
-	for scanner.Scan() {
-		line := scanner.Text()
-		firstline = line
-		logger.Debug(c.Request.Context(), strings.TrimSpace(line))
-
-		if common.IsCloudflareChallenge(line) {
-			logger.Errorf(c.Request.Context(), "Detected Cloudflare Challenge Page")
-			c.JSON(500, gin.H{"error": "Detected Cloudflare Challenge Page"})
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		response, err := makeRequest(client, jsonData, cookie, false)
+		if err != nil {
+			logger.Errorf(ctx, "makeRequest err: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
-		if common.IsRateLimit(line) {
-			logger.Errorf(c.Request.Context(), "Cookie has reached the rate Limit")
-			c.JSON(500, gin.H{"error": "Cookie has reached the rate Limit"})
-			return
-		}
+		scanner := bufio.NewScanner(strings.NewReader(response.Body))
+		var content string
+		var firstLine string
+		var projectId string
+		isRateLimit := false
 
-		if strings.HasPrefix(line, "data: ") {
-			data := strings.TrimPrefix(line, "data: ")
-			var parsedResponse struct {
-				Type      string `json:"type"`
-				FieldName string `json:"field_name"`
-				Content   string `json:"content"`
+		for scanner.Scan() {
+			line := scanner.Text()
+			if firstLine == "" {
+				firstLine = line
 			}
-			if err := json.Unmarshal([]byte(data), &parsedResponse); err != nil {
-				logger.Warnf(c.Request.Context(), "Failed to unmarshal response: %v", err)
-				continue
-			}
-			if parsedResponse.Type == "message_result" {
-				content = parsedResponse.Content
+			logger.Debug(ctx, strings.TrimSpace(line))
+
+			switch {
+			case common.IsCloudflareChallenge(line):
+				logger.Errorf(ctx, errCloudflareChallengeMsg)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": errCloudflareChallengeMsg})
+				return
+			case common.IsRateLimit(line):
+				isRateLimit = true
+				logger.Warnf(ctx, "Cookie rate limited, switching to next cookie, attempt %d/%d", attempt+1, maxRetries)
 				break
+			case common.IsServiceUnavailablePage(line):
+				logger.Errorf(ctx, errServiceUnavailable)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": errServiceUnavailable})
+				return
+			case strings.HasPrefix(line, "data: "):
+
+				data := strings.TrimPrefix(line, "data: ")
+				var parsedResponse struct {
+					Type      string `json:"type"`
+					FieldName string `json:"field_name"`
+					Content   string `json:"content"`
+					Id        string `json:"id"`
+				}
+				if err := json.Unmarshal([]byte(data), &parsedResponse); err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+					return
+				}
+				if parsedResponse.Type == "project_start" {
+					projectId = parsedResponse.Id
+				}
+				if parsedResponse.Type == "message_result" {
+					// 删除临时会话
+					if config.AutoDelChat == 1 {
+						go func() {
+							client := cycletls.Init()
+							defer safeClose(client)
+							makeDeleteRequest(client, cookie, projectId)
+						}()
+					}
+					content = parsedResponse.Content
+					break
+				}
 			}
+		}
+
+		if !isRateLimit {
+			if content == "" {
+				logger.Warnf(ctx, firstLine)
+				//c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidResponseContent})
+			} else {
+				promptTokens := common.CountTokenText(string(jsonData), modelName)
+				completionTokens := common.CountTokenText(content, modelName)
+				finishReason := "stop"
+
+				c.JSON(http.StatusOK, model.OpenAIChatCompletionResponse{
+					ID:      fmt.Sprintf(responseIDFormat, time.Now().Format("20060102150405")),
+					Object:  "chat.completion",
+					Created: time.Now().Unix(),
+					Model:   modelName,
+					Choices: []model.OpenAIChoice{{
+						Message: model.OpenAIMessage{
+							Role:    "assistant",
+							Content: content,
+						},
+						FinishReason: &finishReason,
+					}},
+					Usage: model.OpenAIUsage{
+						PromptTokens:     promptTokens,
+						CompletionTokens: completionTokens,
+						TotalTokens:      promptTokens + completionTokens,
+					},
+				})
+				return
+			}
+		}
+
+		cookie, err = cookieManager.GetNextCookie()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "No more valid cookies available"})
+			return
 		}
 	}
 
-	if content == "" {
-		logger.Errorf(c.Request.Context(), firstline)
-		c.JSON(500, gin.H{"error": "No valid response content"})
-		return
-	}
-
-	promptTokens := common.CountTokenText(string(jsonData), modelName)
-	completionTokens := common.CountTokenText(content, modelName)
-
-	finishReason := "stop"
-	// 创建并返回 OpenAIChatCompletionResponse 结构
-	resp := model.OpenAIChatCompletionResponse{
-		ID:      fmt.Sprintf(responseIDFormat, time.Now().Format("20060102150405")),
-		Object:  "chat.completion",
-		Created: time.Now().Unix(),
-		Model:   modelName,
-		Choices: []model.OpenAIChoice{
-			{
-				Message: model.OpenAIMessage{
-					Role:    "assistant",
-					Content: content,
-				},
-				FinishReason: &finishReason,
-			},
-		},
-		Usage: model.OpenAIUsage{
-			PromptTokens:     promptTokens,
-			CompletionTokens: completionTokens,
-			TotalTokens:      promptTokens + completionTokens,
-		},
-	}
-
-	c.JSON(200, resp)
+	logger.Errorf(ctx, "All cookies exhausted after %d attempts", maxRetries)
+	c.JSON(http.StatusInternalServerError, gin.H{"error": "All cookies are temporarily unavailable."})
 }
 
 func OpenaiModels(c *gin.Context) {

@@ -1,9 +1,11 @@
 package config
 
 import (
+	"errors"
 	"genspark2api/common/env"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -32,3 +34,37 @@ var (
 	RequestRateLimitNum            = env.Int("REQUEST_RATE_LIMIT", 60)
 	RequestRateLimitDuration int64 = 1 * 60
 )
+
+type CookieManager struct {
+	Cookies      []string
+	currentIndex int
+	mu           sync.Mutex
+}
+
+func NewCookieManager() *CookieManager {
+	cookies := strings.Split(os.Getenv("GS_COOKIE"), ",")
+	// 过滤空字符串
+	var validCookies []string
+	for _, cookie := range cookies {
+		if strings.TrimSpace(cookie) != "" {
+			validCookies = append(validCookies, cookie)
+		}
+	}
+
+	return &CookieManager{
+		Cookies:      validCookies,
+		currentIndex: 0,
+	}
+}
+
+func (cm *CookieManager) GetNextCookie() (string, error) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	if len(cm.Cookies) == 0 {
+		return "", errors.New("no cookies available")
+	}
+
+	cm.currentIndex = (cm.currentIndex + 1) % len(cm.Cookies)
+	return cm.Cookies[cm.currentIndex], nil
+}
