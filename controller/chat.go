@@ -741,7 +741,7 @@ func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookieManager
 	ctx := c.Request.Context()
 	maxRetries := len(cookieManager.Cookies)
 
-	cookie, err := cookieManager.GetNextCookie()
+	cookie, err := cookieManager.GetRandomCookie()
 	if err != nil {
 		logger.Errorf(ctx, "Failed to get initial cookie: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
@@ -975,7 +975,7 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookieMana
 	ctx := c.Request.Context()
 	maxRetries := len(cookieManager.Cookies)
 
-	cookie, err := cookieManager.GetNextCookie()
+	cookie, err := cookieManager.GetRandomCookie()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
 		return

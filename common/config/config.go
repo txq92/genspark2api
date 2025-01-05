@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"genspark2api/common/env"
+	"math/rand"
 	"os"
 	"strings"
 	"sync"
@@ -67,4 +68,20 @@ func (cm *CookieManager) GetNextCookie() (string, error) {
 
 	cm.currentIndex = (cm.currentIndex + 1) % len(cm.Cookies)
 	return cm.Cookies[cm.currentIndex], nil
+}
+
+func (cm *CookieManager) GetRandomCookie() (string, error) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	if len(cm.Cookies) == 0 {
+		return "", errors.New("no cookies available")
+	}
+
+	// 生成随机索引
+	randomIndex := rand.Intn(len(cm.Cookies))
+	// 更新当前索引
+	cm.currentIndex = randomIndex
+
+	return cm.Cookies[randomIndex], nil
 }
