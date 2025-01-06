@@ -161,9 +161,9 @@ Render 可以直接部署 docker 镜像,不需要 fork 仓库：[Render](https:/
 
 1. 打开**F12**开发者工具。
 2. 发起对话。
-3. 点击ask请求，请求头中的**cookie**即为环境变量**GS_COOKIE**所需值。
+3. 点击ask请求,请求头中的**cookie**即为环境变量**GS_COOKIE**所需值。
 
-> **【注】** 其中`session_id=f9c60******cb6d`是必须的，其他内容可要可不要，即环境变量`GS_COOKIE=session_id=f9c60******cb6d`
+> **【注】** 其中`session_id=f9c60******cb6d`是必须的,其他内容可要可不要,即环境变量`GS_COOKIE=session_id=f9c60******cb6d`
 
 
 ![img.png](docs/img.png)
@@ -178,13 +178,13 @@ Render 可以直接部署 docker 镜像,不需要 fork 仓库：[Render](https:/
 > 此配置下,会在调用模型时获取对话的id,并绑定模型。
 
 #### 方案二
-### 配置环境变量 MODEL_CHAT_MAP
-
-> 【作用】指定对话，解决模型自动切换导致降智问题。
+> 配置环境变量 MODEL_CHAT_MAP
+>
+> 【作用】指定对话,解决模型自动切换导致降智问题。
 
 1. 打开**F12**开发者工具。
 2. 选择需要绑定的对话的模型(示例:`claude-3-5-sonnet`),发起对话。
-3. 点击ask请求，此时最上方url中的`id`(或响应中的`id`)即为此对话唯一id。
+3. 点击ask请求,此时最上方url中的`id`(或响应中的`id`)即为此对话唯一id。
    ![img.png](docs/img4.png)
 4. 配置环境变量 `MODEL_CHAT_MAP=claude-3-5-sonnet=3cdcc******474c5` (多个请以,分隔)
 
