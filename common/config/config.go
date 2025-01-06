@@ -17,7 +17,7 @@ var GSCookies = strings.Split(os.Getenv("GS_COOKIE"), ",")
 var AutoDelChat = env.Int("AUTO_DEL_CHAT", 0)
 var ProxyUrl = env.String("PROXY_URL", "")
 var ModelChatMapStr = env.String("MODEL_CHAT_MAP", "")
-var AutoModelChatMapType = env.Int("AUTO_MODEL_CHAT_MAP_TYPE", 0)
+var AutoModelChatMapType = env.Int("AUTO_MODEL_CHAT_MAP_TYPE", 1)
 var ModelChatMap = make(map[string]string)
 var GlobalSessionManager *SessionManager
 

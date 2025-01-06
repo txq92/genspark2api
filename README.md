@@ -151,10 +151,11 @@ Render 可以直接部署 docker 镜像,不需要 fork 仓库：[Render](https:/
 2. `DEBUG=true`  [可选]DEBUG模式,可打印更多信息[true:打开、false:关闭]
 3. `API_SECRET=123456`  [可选]接口密钥-修改此行为请求头(Authorization)校验的值(同API-KEY)(多个请以,分隔)
 4. `GS_COOKIE=******`  cookie (多个请以,分隔)
-5. `AUTO_DEL_CHAT=0`  [可选]对话完成自动删除[0:关闭,1:开启]
+5. `AUTO_DEL_CHAT=0`  [可选]对话完成自动删除(默认:0)[0:关闭,1:开启]
 6. `REQUEST_RATE_LIMIT=60`  [可选]每分钟下的单ip请求速率限制,默认:60次/min
 7. `PROXY_URL=http://127.0.0.1:10801`  [可选]代理
-8. `MODEL_CHAT_MAP=claude-3-5-sonnet=a649******00fa,gpt-4o=su74******47hd`  [可选]Model绑定Chat(多个请以,分隔),详细请看[进阶配置](#进阶配置)
+8. `AUTO_MODEL_CHAT_MAP_TYPE=1`  [可选]自动配置Model绑定Chat(默认:1)[0:关闭,1:开启]
+9. `MODEL_CHAT_MAP=claude-3-5-sonnet=a649******00fa,gpt-4o=su74******47hd`  [可选]Model绑定Chat(多个请以,分隔),详细请看[进阶配置](#进阶配置)
 
 ### cookie获取方式
 
@@ -169,6 +170,14 @@ Render 可以直接部署 docker 镜像,不需要 fork 仓库：[Render](https:/
 
 ## 进阶配置
 
+### 解决模型自动切换导致降智问题
+
+#### 方案一 (默认启用此配置)【推荐】
+> 配置环境变量 **AUTO_MODEL_CHAT_MAP_TYPE=1**
+> 
+> 此配置下,会在调用模型时获取对话的id,并绑定模型。
+
+#### 方案二
 ### 配置环境变量 MODEL_CHAT_MAP
 
 > 【作用】指定对话，解决模型自动切换导致降智问题。
