@@ -943,6 +943,9 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie str
 			if firstLine == "" {
 				firstLine = line
 			}
+			if line == "" {
+				continue
+			}
 			logger.Debug(ctx, strings.TrimSpace(line))
 
 			switch {
