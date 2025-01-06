@@ -38,14 +38,6 @@ func CheckEnvVariable() {
 				logger.FatalLog("环境变量 MODEL_CHAT_MAP 有值时,环境变量 AUTO_MODEL_CHAT_MAP_TYPE 不能设置为1")
 			}
 
-			//if config.AutoDelChat == 1 {
-			//	logger.FatalLog("环境变量 MODEL_CHAT_MAP 有值时,环境变量 AUTO_DEL_CHAT 不能设置为1")
-			//}
-
-			//cookies := strings.Split(config.GSCookie, ",")
-			//if len(cookies) > 1 {
-			//	logger.FatalLog("环境变量 MODEL_CHAT_MAP 有值时,环境变量 GS_COOKIE 仅能设置一个")
-			//}
 		}
 	}
 	logger.SysLog("environment variable check passed.")

@@ -20,6 +20,10 @@ import (
 )
 
 const (
+	errNoValidCookies = "No valid cookies available"
+)
+
+const (
 	baseURL          = "https://www.genspark.ai"
 	apiEndpoint      = baseURL + "/api/copilot/ask"
 	deleteEndpoint   = baseURL + "/api/project/delete?project_id=%s"
@@ -56,16 +60,13 @@ func ChatForOpenAI(c *gin.Context) {
 		})
 		return
 	}
-	cookie, err := common.RandomElement(config.GSCookies)
+
+	// 初始化cookie
+	cookieManager := config.NewCookieManager()
+	cookie, err := cookieManager.GetRandomCookie()
 	if err != nil {
-		logger.Errorf(c.Request.Context(), err.Error())
-		c.JSON(http.StatusInternalServerError, model.OpenAIErrorResponse{
-			OpenAIError: model.OpenAIError{
-				Message: err.Error(),
-				Type:    "request_error",
-				Code:    "500",
-			},
-		})
+		logger.Errorf(c.Request.Context(), "Failed to get initial cookie: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
 		return
 	}
 
@@ -170,18 +171,16 @@ func ChatForOpenAI(c *gin.Context) {
 		return
 	}
 
-	jsonData, err := json.Marshal(requestBody)
-	if err != nil {
-		c.JSON(500, gin.H{"error": "Failed to marshal request body"})
-		return
-	}
-
-	cookieManager := config.NewCookieManager()
+	//jsonData, err := json.Marshal(requestBody)
+	//if err != nil {
+	//	c.JSON(500, gin.H{"error": "Failed to marshal request body"})
+	//	return
+	//}
 
 	if openAIReq.Stream {
-		handleStreamRequest(c, client, cookieManager, jsonData, openAIReq.Model)
+		handleStreamRequest(c, client, cookie, cookieManager, requestBody, openAIReq.Model)
 	} else {
-		handleNonStreamRequest(c, client, cookieManager, jsonData, openAIReq.Model)
+		handleNonStreamRequest(c, client, cookie, cookieManager, requestBody, openAIReq.Model)
 	}
 
 }
@@ -479,75 +478,6 @@ func createStreamResponse(responseId, modelName string, jsonData []byte, delta m
 	}
 }
 
-// handleStreamResponse 处理流式响应
-//func handleStreamResponse(c *gin.Context, sseChan <-chan cycletls.SSEResponse, responseId, cookie, model string, jsonData []byte) bool {
-//	var projectId string
-//
-//	for response := range sseChan {
-//		if response.Done {
-//			break
-//		}
-//
-//		data := response.Data
-//		if data == "" {
-//			continue
-//		}
-//
-//		logger.Debug(c.Request.Context(), strings.TrimSpace(data))
-//
-//		if common.IsCloudflareChallenge(data) {
-//			logger.Errorf(c.Request.Context(), "Detected Cloudflare Challenge Page")
-//			c.JSON(500, gin.H{"error": "Detected Cloudflare Challenge Page"})
-//			return false
-//		}
-//
-//		if common.IsRateLimit(data) {
-//			logger.Errorf(c.Request.Context(), "Cookie has reached the rate Limit")
-//			c.JSON(500, gin.H{"error": "Cookie has reached the rate Limit"})
-//			return false
-//		}
-//
-//		// 处理 "data: " 前缀
-//		data = strings.TrimSpace(data)
-//		if !strings.HasPrefix(data, "data: ") {
-//			continue
-//		}
-//		data = strings.TrimPrefix(data, "data: ")
-//
-//		var event map[string]interface{}
-//		if err := json.Unmarshal([]byte(data), &event); err != nil {
-//			logger.Warnf(c.Request.Context(), "Failed to unmarshal event: %v", err)
-//			continue
-//		}
-//
-//		eventType, ok := event["type"].(string)
-//		if !ok {
-//			continue
-//		}
-//
-//		switch eventType {
-//		case "project_start":
-//			projectId, _ = event["id"].(string)
-//		case "message_field_delta":
-//			if err := handleMessageFieldDelta(c, event, responseId, model, jsonData); err != nil {
-//				logger.Warnf(c.Request.Context(), "handleMessageFieldDelta err: %v", err)
-//				return false
-//			}
-//		case "message_result":
-//			// 删除临时会话
-//			if config.AutoDelChat == 1 {
-//				go func() {
-//					client := cycletls.Init()
-//					defer safeClose(client)
-//					makeDeleteRequest(client, cookie, projectId)
-//				}()
-//			}
-//			return handleMessageResult(c, responseId, model, jsonData)
-//		}
-//	}
-//	return false
-//}
-
 // handleMessageFieldDelta 处理消息字段增量
 func handleMessageFieldDelta(c *gin.Context, event map[string]interface{}, responseId, modelName string, jsonData []byte) error {
 	fieldName, ok := event["field_name"].(string)
@@ -729,7 +659,7 @@ func makeUploadRequest(client cycletls.CycleTLS, uploadUrl string, fileBytes []b
 //	})
 //}
 
-func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookieManager *config.CookieManager, jsonData []byte, modelName string) {
+func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string, cookieManager *config.CookieManager, requestBody map[string]interface{}, modelName string) {
 	const (
 		errNoValidCookies         = "No valid cookies available"
 		errCloudflareChallengeMsg = "Detected Cloudflare Challenge Page"
@@ -744,15 +674,13 @@ func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookieManager
 	ctx := c.Request.Context()
 	maxRetries := len(cookieManager.Cookies)
 
-	cookie, err := cookieManager.GetRandomCookie()
-	if err != nil {
-		logger.Errorf(ctx, "Failed to get initial cookie: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
-		return
-	}
-
 	c.Stream(func(w io.Writer) bool {
 		for attempt := 0; attempt < maxRetries; attempt++ {
+			jsonData, err := json.Marshal(requestBody)
+			if err != nil {
+				c.JSON(500, gin.H{"error": "Failed to marshal request body"})
+				return false
+			}
 			sseChan, err := makeStreamRequest(c, client, jsonData, cookie)
 			if err != nil {
 				logger.Errorf(ctx, "makeStreamRequest err on attempt %d: %v", attempt+1, err)
@@ -807,6 +735,13 @@ func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookieManager
 				c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
 				return false
 			}
+
+			// requestBody重制chatId
+			currentQueryString := fmt.Sprintf("type=%s", chatType)
+			if chatId, ok := config.GlobalSessionManager.GetChatID(cookie, modelName); ok {
+				currentQueryString = fmt.Sprintf("id=%s&type=%s", chatId, chatType)
+			}
+			requestBody["current_query_string"] = currentQueryString
 		}
 
 		logger.Errorf(ctx, "All cookies exhausted after %d attempts", maxRetries)
@@ -973,7 +908,7 @@ func makeStreamRequest(c *gin.Context, client cycletls.CycleTLS, jsonData []byte
 //
 //		c.JSON(200, resp)
 //	}
-func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookieManager *config.CookieManager, jsonData []byte, modelName string) {
+func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string, cookieManager *config.CookieManager, requestBody map[string]interface{}, modelName string) {
 	const (
 		errNoValidCookies         = "No valid cookies available"
 		errCloudflareChallengeMsg = "Detected Cloudflare Challenge Page"
@@ -984,13 +919,12 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookieMana
 	ctx := c.Request.Context()
 	maxRetries := len(cookieManager.Cookies)
 
-	cookie, err := cookieManager.GetRandomCookie()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
-		return
-	}
-
 	for attempt := 0; attempt < maxRetries; attempt++ {
+		jsonData, err := json.Marshal(requestBody)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Failed to marshal request body"})
+			return
+		}
 		response, err := makeRequest(client, jsonData, cookie, false)
 		if err != nil {
 			logger.Errorf(ctx, "makeRequest err: %v", err)
@@ -1041,18 +975,19 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookieMana
 					projectId = parsedResponse.Id
 				}
 				if parsedResponse.Type == "message_result" {
-
 					// 删除临时会话
-
 					go func() {
-						config.GlobalSessionManager.AddSession(cookie, modelName, projectId)
-						//if config.AutoDelChat == 1 {
-						//	client := cycletls.Init()
-						//	defer safeClose(client)
-						//	makeDeleteRequest(client, cookie, projectId)
-						//}
+						if config.AutoModelChatMapType == 1 {
+							// 保存映射
+							config.GlobalSessionManager.AddSession(cookie, modelName, projectId)
+						} else {
+							if config.AutoDelChat == 1 {
+								client := cycletls.Init()
+								defer safeClose(client)
+								makeDeleteRequest(client, cookie, projectId)
+							}
+						}
 					}()
-
 					content = parsedResponse.Content
 					break
 				}
@@ -1095,6 +1030,12 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookieMana
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "No more valid cookies available"})
 			return
 		}
+		// requestBody重制chatId
+		currentQueryString := fmt.Sprintf("type=%s", chatType)
+		if chatId, ok := config.GlobalSessionManager.GetChatID(cookie, modelName); ok {
+			currentQueryString = fmt.Sprintf("id=%s&type=%s", chatId, chatType)
+		}
+		requestBody["current_query_string"] = currentQueryString
 	}
 
 	logger.Errorf(ctx, "All cookies exhausted after %d attempts", maxRetries)
