@@ -17,7 +17,9 @@ var GSCookies = strings.Split(os.Getenv("GS_COOKIE"), ",")
 var AutoDelChat = env.Int("AUTO_DEL_CHAT", 0)
 var ProxyUrl = env.String("PROXY_URL", "")
 var ModelChatMapStr = env.String("MODEL_CHAT_MAP", "")
+var AutoModelChatMapType = env.Int("AUTO_MODEL_CHAT_MAP_TYPE", 0)
 var ModelChatMap = make(map[string]string)
+var GlobalSessionManager *SessionManager
 
 var AllDialogRecordEnable = os.Getenv("ALL_DIALOG_RECORD_ENABLE")
 var RequestOutTime = os.Getenv("REQUEST_OUT_TIME")
@@ -84,4 +86,60 @@ func (cm *CookieManager) GetRandomCookie() (string, error) {
 	cm.currentIndex = randomIndex
 
 	return cm.Cookies[randomIndex], nil
+}
+
+// SessionKey 定义复合键结构
+type SessionKey struct {
+	Cookie string
+	Model  string
+}
+
+// SessionManager 会话管理器
+type SessionManager struct {
+	sessions map[SessionKey]string
+	mutex    sync.RWMutex
+}
+
+// NewSessionManager 创建新的会话管理器
+func NewSessionManager() *SessionManager {
+	return &SessionManager{
+		sessions: make(map[SessionKey]string),
+	}
+}
+
+// AddSession 添加会话记录（写操作，需要写锁）
+func (sm *SessionManager) AddSession(cookie string, model string, chatID string) {
+	sm.mutex.Lock()
+	defer sm.mutex.Unlock()
+
+	key := SessionKey{
+		Cookie: cookie,
+		Model:  model,
+	}
+	sm.sessions[key] = chatID
+}
+
+// GetChatID 获取会话ID（读操作，使用读锁）
+func (sm *SessionManager) GetChatID(cookie string, model string) (string, bool) {
+	sm.mutex.RLock()
+	defer sm.mutex.RUnlock()
+
+	key := SessionKey{
+		Cookie: cookie,
+		Model:  model,
+	}
+	chatID, exists := sm.sessions[key]
+	return chatID, exists
+}
+
+// DeleteSession 删除会话记录（写操作，需要写锁）
+func (sm *SessionManager) DeleteSession(cookie string, model string) {
+	sm.mutex.Lock()
+	defer sm.mutex.Unlock()
+
+	key := SessionKey{
+		Cookie: cookie,
+		Model:  model,
+	}
+	delete(sm.sessions, key)
 }

@@ -332,8 +332,11 @@ func createRequestBody(c *gin.Context, client cycletls.CycleTLS, cookie string, 
 	}
 
 	currentQueryString := fmt.Sprintf("type=%s", chatType)
+	//currentQueryString := fmt.Sprintf("id=b44b385e-08d9-4858-b4bc-9077f39df9f4type=%s", chatType)
 	// 查找 key 对应的 value
 	if chatId, ok := config.ModelChatMap[openAIReq.Model]; ok {
+		currentQueryString = fmt.Sprintf("id=%s&type=%s", chatId, chatType)
+	} else if chatId, ok := config.GlobalSessionManager.GetChatID(cookie, openAIReq.Model); ok {
 		currentQueryString = fmt.Sprintf("id=%s&type=%s", chatId, chatType)
 	}
 
@@ -477,73 +480,73 @@ func createStreamResponse(responseId, modelName string, jsonData []byte, delta m
 }
 
 // handleStreamResponse 处理流式响应
-func handleStreamResponse(c *gin.Context, sseChan <-chan cycletls.SSEResponse, responseId, cookie, model string, jsonData []byte) bool {
-	var projectId string
-
-	for response := range sseChan {
-		if response.Done {
-			break
-		}
-
-		data := response.Data
-		if data == "" {
-			continue
-		}
-
-		logger.Debug(c.Request.Context(), strings.TrimSpace(data))
-
-		if common.IsCloudflareChallenge(data) {
-			logger.Errorf(c.Request.Context(), "Detected Cloudflare Challenge Page")
-			c.JSON(500, gin.H{"error": "Detected Cloudflare Challenge Page"})
-			return false
-		}
-
-		if common.IsRateLimit(data) {
-			logger.Errorf(c.Request.Context(), "Cookie has reached the rate Limit")
-			c.JSON(500, gin.H{"error": "Cookie has reached the rate Limit"})
-			return false
-		}
-
-		// 处理 "data: " 前缀
-		data = strings.TrimSpace(data)
-		if !strings.HasPrefix(data, "data: ") {
-			continue
-		}
-		data = strings.TrimPrefix(data, "data: ")
-
-		var event map[string]interface{}
-		if err := json.Unmarshal([]byte(data), &event); err != nil {
-			logger.Warnf(c.Request.Context(), "Failed to unmarshal event: %v", err)
-			continue
-		}
-
-		eventType, ok := event["type"].(string)
-		if !ok {
-			continue
-		}
-
-		switch eventType {
-		case "project_start":
-			projectId, _ = event["id"].(string)
-		case "message_field_delta":
-			if err := handleMessageFieldDelta(c, event, responseId, model, jsonData); err != nil {
-				logger.Warnf(c.Request.Context(), "handleMessageFieldDelta err: %v", err)
-				return false
-			}
-		case "message_result":
-			// 删除临时会话
-			if config.AutoDelChat == 1 {
-				go func() {
-					client := cycletls.Init()
-					defer safeClose(client)
-					makeDeleteRequest(client, cookie, projectId)
-				}()
-			}
-			return handleMessageResult(c, responseId, model, jsonData)
-		}
-	}
-	return false
-}
+//func handleStreamResponse(c *gin.Context, sseChan <-chan cycletls.SSEResponse, responseId, cookie, model string, jsonData []byte) bool {
+//	var projectId string
+//
+//	for response := range sseChan {
+//		if response.Done {
+//			break
+//		}
+//
+//		data := response.Data
+//		if data == "" {
+//			continue
+//		}
+//
+//		logger.Debug(c.Request.Context(), strings.TrimSpace(data))
+//
+//		if common.IsCloudflareChallenge(data) {
+//			logger.Errorf(c.Request.Context(), "Detected Cloudflare Challenge Page")
+//			c.JSON(500, gin.H{"error": "Detected Cloudflare Challenge Page"})
+//			return false
+//		}
+//
+//		if common.IsRateLimit(data) {
+//			logger.Errorf(c.Request.Context(), "Cookie has reached the rate Limit")
+//			c.JSON(500, gin.H{"error": "Cookie has reached the rate Limit"})
+//			return false
+//		}
+//
+//		// 处理 "data: " 前缀
+//		data = strings.TrimSpace(data)
+//		if !strings.HasPrefix(data, "data: ") {
+//			continue
+//		}
+//		data = strings.TrimPrefix(data, "data: ")
+//
+//		var event map[string]interface{}
+//		if err := json.Unmarshal([]byte(data), &event); err != nil {
+//			logger.Warnf(c.Request.Context(), "Failed to unmarshal event: %v", err)
+//			continue
+//		}
+//
+//		eventType, ok := event["type"].(string)
+//		if !ok {
+//			continue
+//		}
+//
+//		switch eventType {
+//		case "project_start":
+//			projectId, _ = event["id"].(string)
+//		case "message_field_delta":
+//			if err := handleMessageFieldDelta(c, event, responseId, model, jsonData); err != nil {
+//				logger.Warnf(c.Request.Context(), "handleMessageFieldDelta err: %v", err)
+//				return false
+//			}
+//		case "message_result":
+//			// 删除临时会话
+//			if config.AutoDelChat == 1 {
+//				go func() {
+//					client := cycletls.Init()
+//					defer safeClose(client)
+//					makeDeleteRequest(client, cookie, projectId)
+//				}()
+//			}
+//			return handleMessageResult(c, responseId, model, jsonData)
+//		}
+//	}
+//	return false
+//}
 
 // handleMessageFieldDelta 处理消息字段增量
 func handleMessageFieldDelta(c *gin.Context, event map[string]interface{}, responseId, modelName string, jsonData []byte) error {
@@ -842,13 +845,19 @@ func processStreamData(c *gin.Context, data string, projectId *string, cookie, r
 			return false
 		}
 	case "message_result":
-		if config.AutoDelChat == 1 {
-			go func() {
-				client := cycletls.Init()
-				defer safeClose(client)
-				makeDeleteRequest(client, cookie, *projectId)
-			}()
-		}
+		go func() {
+			if config.AutoModelChatMapType == 1 {
+				// 保存映射
+				config.GlobalSessionManager.AddSession(cookie, model, *projectId)
+			} else {
+				if config.AutoDelChat == 1 {
+					client := cycletls.Init()
+					defer safeClose(client)
+					makeDeleteRequest(client, cookie, *projectId)
+				}
+			}
+		}()
+
 		return handleMessageResult(c, responseId, model, jsonData)
 	}
 
@@ -1032,14 +1041,18 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookieMana
 					projectId = parsedResponse.Id
 				}
 				if parsedResponse.Type == "message_result" {
+
 					// 删除临时会话
-					if config.AutoDelChat == 1 {
-						go func() {
-							client := cycletls.Init()
-							defer safeClose(client)
-							makeDeleteRequest(client, cookie, projectId)
-						}()
-					}
+
+					go func() {
+						config.GlobalSessionManager.AddSession(cookie, modelName, projectId)
+						//if config.AutoDelChat == 1 {
+						//	client := cycletls.Init()
+						//	defer safeClose(client)
+						//	makeDeleteRequest(client, cookie, projectId)
+						//}
+					}()
+
 					content = parsedResponse.Content
 					break
 				}
