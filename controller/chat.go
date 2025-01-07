@@ -350,7 +350,7 @@ func createRequestBody(c *gin.Context, client cycletls.CycleTLS, cookie string, 
 		//"current_query_string": fmt.Sprintf("&type=%s", chatType),
 		"current_query_string": currentQueryString,
 		"messages":             openAIReq.Messages,
-		//"user_s_input":  "100字的量子力学文章",
+		//"user_s_input":         "你行！",
 		"action_params": map[string]interface{}{},
 		"extra_data": map[string]interface{}{
 			"models":                 models,
@@ -663,6 +663,7 @@ func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string
 	const (
 		errNoValidCookies         = "No valid cookies available"
 		errCloudflareChallengeMsg = "Detected Cloudflare Challenge Page"
+		errServerErrMsg           = "An error occurred with the current request, please try again."
 		errServiceUnavailable     = "Genspark Service Unavailable"
 	)
 
@@ -711,6 +712,10 @@ func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string
 				case common.IsServiceUnavailablePage(data):
 					logger.Errorf(ctx, errServiceUnavailable)
 					c.JSON(http.StatusInternalServerError, gin.H{"error": errServiceUnavailable})
+					return false
+				case common.IsServerError(data):
+					logger.Errorf(ctx, errServerErrMsg)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": errServerErrMsg})
 					return false
 				case common.IsRateLimit(data):
 					isRateLimit = true
@@ -912,6 +917,7 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie str
 	const (
 		errNoValidCookies         = "No valid cookies available"
 		errCloudflareChallengeMsg = "Detected Cloudflare Challenge Page"
+		errServerErrMsg           = "An error occurred with the current request, please try again."
 		errServiceUnavailable     = "Genspark Service Unavailable"
 		errNoValidResponseContent = "No valid response content"
 	)
@@ -960,6 +966,10 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie str
 			case common.IsServiceUnavailablePage(line):
 				logger.Errorf(ctx, errServiceUnavailable)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": errServiceUnavailable})
+				return
+			case common.IsServerError(line):
+				logger.Errorf(ctx, errServerErrMsg)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": errServerErrMsg})
 				return
 			case strings.HasPrefix(line, "data: "):
 

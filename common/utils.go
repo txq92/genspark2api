@@ -166,6 +166,14 @@ func IsRateLimit(data string) bool {
 	return false
 }
 
+func IsServerError(data string) bool {
+	if data == "Internal Server Error" {
+		return true
+	}
+
+	return false
+}
+
 func IsServiceUnavailablePage(data string) bool {
 	// 检查基本的 HTML 结构
 	htmlPattern := `^<!doctype html><html.*?><head>.*?</head><body.*?>.*?</body></html>`
