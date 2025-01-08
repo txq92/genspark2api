@@ -8,7 +8,7 @@ var Version = "v1.7.1"            // this hard coding will be replaced automatic
 var DefaultOpenaiModelList = []string{
 	"gpt-4o",
 	"gpt-4o-mini",
-	"o1-preview",
+	"o1",
 	"claude-3-5-sonnet",
 	"claude-3-5-haiku",
 	"gemini-1.5-pro",
@@ -25,7 +25,7 @@ var DefaultOpenaiModelList = []string{
 var TextModelList = []string{
 	"gpt-4o",
 	"gpt-4o-mini",
-	"o1-preview",
+	"o1",
 	"claude-3-5-sonnet",
 	"claude-3-5-haiku",
 	"gemini-1.5-pro",
