@@ -485,8 +485,12 @@ func handleMessageFieldDelta(c *gin.Context, event map[string]interface{}, respo
 		return nil
 	}
 
-	delta, ok := event["delta"].(string)
-
+	var delta string
+	if strings.HasPrefix(modelName, "o1") {
+		delta, ok = event["field_value"].(string)
+	} else {
+		delta, ok = event["delta"].(string)
+	}
 	if !ok {
 		return nil
 	}
@@ -778,6 +782,12 @@ func processStreamData(c *gin.Context, data string, projectId *string, cookie, r
 	switch eventType {
 	case "project_start":
 		*projectId, _ = event["id"].(string)
+	case "message_field":
+		if err := handleMessageFieldDelta(c, event, responseId, model, jsonData); err != nil {
+			logger.Errorf(c.Request.Context(), "handleMessageFieldDelta err: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return false
+		}
 	case "message_field_delta":
 		if err := handleMessageFieldDelta(c, event, responseId, model, jsonData); err != nil {
 			logger.Errorf(c.Request.Context(), "handleMessageFieldDelta err: %v", err)
