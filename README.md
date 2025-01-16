@@ -192,8 +192,9 @@ Render 可以直接部署 docker 镜像,不需要 fork 仓库：[Render](https:/
 ## 报错排查
 
 > `Detected Cloudflare Challenge Page`
-> 
-被Cloudflare拦截出5s盾,可配置`PROXY_URL`。([IProyal](https://iproyal.cn/?r=244330))
+>
+
+被Cloudflare拦截出5s盾,可配置`PROXY_URL`。(【推荐方案】[自建ipv6代理池绕过cf对ip的速率限制及5s盾](https://linux.do/t/topic/367413)或购买[IProyal](https://iproyal.cn/?r=244330))
 
 > `Genspark Service Unavailable`
 >
