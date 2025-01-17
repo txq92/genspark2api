@@ -194,7 +194,7 @@ Render 可以直接部署 docker 镜像,不需要 fork 仓库：[Render](https:/
 
 > genspark官方目前文生图接口需要过谷歌验证,可使用YesCaptcha解决。
 > 
-> **tip**: 过一次谷歌验证消耗20积分,约**0.0167元人民币**(1元人名币约能用60次)。
+> **tip**: 过一次谷歌验证消耗20积分,约**0.0167元人民币**(1元人民币约能用60次)。
 
 
 1. 注册 [YesCaptcha](https://yescaptcha.com/i/021iAE)[此链接注册直达**vip5**]
