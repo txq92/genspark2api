@@ -15,6 +15,9 @@ func CheckEnvVariable() {
 	if config.GSCookie == "" {
 		logger.FatalLog("环境变量 GS_COOKIE 未设置")
 	}
+	if config.YesCaptchaClientKey == "" {
+		logger.SysLog("环境变量 YES_CAPTCHA_CLIENT_KEY 未设置，将无法使用 YesCaptcha 过谷歌验证，导致无法调用文生图模型 \n ClientKey获取地址：https://yescaptcha.com/i/021iAE")
+	}
 	if config.ModelChatMapStr != "" {
 		pattern := `^([a-zA-Z0-9\-\/]+=([a-zA-Z0-9\-\.]+))(,[a-zA-Z0-9\-\/]+=([a-zA-Z0-9\-\.]+))*`
 		match, _ := regexp.MatchString(pattern, config.ModelChatMapStr)

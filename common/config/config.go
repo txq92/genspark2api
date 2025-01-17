@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"genspark2api/common/env"
+	"genspark2api/yescaptcha"
 	"math/rand"
 	"os"
 	"strings"
@@ -18,8 +19,10 @@ var AutoDelChat = env.Int("AUTO_DEL_CHAT", 0)
 var ProxyUrl = env.String("PROXY_URL", "")
 var ModelChatMapStr = env.String("MODEL_CHAT_MAP", "")
 var AutoModelChatMapType = env.Int("AUTO_MODEL_CHAT_MAP_TYPE", 1)
+var YesCaptchaClientKey = env.String("YES_CAPTCHA_CLIENT_KEY", "")
 var ModelChatMap = make(map[string]string)
 var GlobalSessionManager *SessionManager
+var YescaptchaClient *yescaptcha.Client
 
 var AllDialogRecordEnable = os.Getenv("ALL_DIALOG_RECORD_ENABLE")
 var RequestOutTime = os.Getenv("REQUEST_OUT_TIME")
