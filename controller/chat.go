@@ -2,7 +2,6 @@ package controller
 
 import (
 	"bufio"
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -10,7 +9,6 @@ import (
 	"genspark2api/common/config"
 	logger "genspark2api/common/loggger"
 	"genspark2api/model"
-	"genspark2api/yescaptcha"
 	"github.com/deanxv/CycleTLS/cycletls"
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
@@ -363,26 +361,26 @@ func createRequestBody(c *gin.Context, client cycletls.CycleTLS, cookie string, 
 	}, nil
 }
 func createImageRequestBody(c *gin.Context, cookie string, openAIReq *model.OpenAIImagesGenerationRequest) (map[string]interface{}, error) {
-	gRecaptchaToken := ""
-	if config.YesCaptchaClientKey != "" {
-		// 创建上下文，设置超时
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		defer cancel()
-		// 准备请求参数
-		req := yescaptcha.RecaptchaV3Request{
-			WebsiteURL: "https://www.genspark.ai/",
-			WebsiteKey: "6Leq7KYqAAAAAGdd1NaUBJF9dHTPAKP7DcnaRc66",
-			PageAction: "copilot",
-		}
-
-		// 解决验证码
-		response, err := config.YescaptchaClient.SolveRecaptchaV3(ctx, req)
-		if err != nil {
-			return map[string]interface{}{}, err
-		}
-
-		gRecaptchaToken = response
-	}
+	//gRecaptchaToken := ""
+	//if config.YesCaptchaClientKey != "" {
+	//	// 创建上下文，设置超时
+	//	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	//	defer cancel()
+	//	// 准备请求参数
+	//	req := yescaptcha.RecaptchaV3Request{
+	//		WebsiteURL: "https://www.genspark.ai/",
+	//		WebsiteKey: "6Leq7KYqAAAAAGdd1NaUBJF9dHTPAKP7DcnaRc66",
+	//		PageAction: "copilot",
+	//	}
+	//
+	//	// 解决验证码
+	//	response, err := config.YescaptchaClient.SolveRecaptchaV3(ctx, req)
+	//	if err != nil {
+	//		return map[string]interface{}{}, err
+	//	}
+	//
+	//	gRecaptchaToken = response
+	//}
 
 	if openAIReq.Model == "dall-e-3" {
 		openAIReq.Model = "dalle-3"
@@ -473,7 +471,7 @@ func createImageRequestBody(c *gin.Context, cookie string, openAIReq *model.Open
 			"imageModelMap":  map[string]interface{}{},
 			"writingContent": nil,
 		},
-		"g_recaptcha_token": gRecaptchaToken,
+		//"g_recaptcha_token": gRecaptchaToken,
 	}, nil
 }
 

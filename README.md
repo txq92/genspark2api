@@ -22,7 +22,7 @@ _觉得有点意思的话 别忘了点个🌟_
     - **gemini-1.5-flash**
     - **deep-seek-v3**
 - [x] 支持识别**图片**/**文件**多轮对话
-- [x] 支持文生图接口(`/images/generations`)(**需要配置环境变量 `YES_CAPTCHA_CLIENT_KEY`**)
+- [ ] ~~支持文生图接口(`/images/generations`)~~(**暂不可用**)
     - **flux**
     - **flux-speed**
     - **flux-pro/ultra**
@@ -190,18 +190,19 @@ Render 可以直接部署 docker 镜像,不需要 fork 仓库：[Render](https:/
    ![img.png](docs/img4.png)
 4. 配置环境变量 `MODEL_CHAT_MAP=claude-3-5-sonnet=3cdcc******474c5` (多个请以,分隔)
 
-### 使用YesCaptcha过谷歌验证
+### 使用YesCaptcha过谷歌验证[**暂不需要**]
 
 > genspark官方目前文生图接口需要过谷歌验证,可使用YesCaptcha解决。
-> 
+>
 > **tip**: 过一次谷歌验证消耗20积分,约**0.0167元人民币**(1元人民币约能用60次)。
 
 
-1. 注册 [YesCaptcha](https://yescaptcha.com/i/021iAE)[此链接注册直达**vip5**]
-2. 获取`Client Key`
-   ![img.png](docs/img6.png)
-3. 配置环变量`YES_CAPTCHA_CLIENT_KEY=******`
-4. 重启服务
+~~1. 注册 [YesCaptcha](https://yescaptcha.com/i/021iAE)[此链接注册直达**vip5**]~~
+~~2. 获取`Client Key`~~
+   ~~![img.png](docs/img6.png)~~
+~~3. 配置环变量`YES_CAPTCHA_CLIENT_KEY=******`~~
+~~4. 重启服务~~
+
 
 
 ## 报错排查
