@@ -1162,7 +1162,8 @@ func ImageProcess(c *gin.Context, client cycletls.CycleTLS, cookie string, openA
 		// 解析响应获取task_ids
 		projectId, taskIDs := extractTaskIDs(response.Body)
 		if len(taskIDs) == 0 {
-			return nil, fmt.Errorf("未配置环境变量 YES_CAPTCHA_CLIENT_KEY")
+			//return nil, fmt.Errorf("未配置环境变量 YES_CAPTCHA_CLIENT_KEY")
+			return nil, fmt.Errorf("目前版本生图模型暂不可用,努力修复中...")
 		}
 
 		// 获取所有图片URL
