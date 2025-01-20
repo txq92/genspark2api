@@ -1313,6 +1313,29 @@ func ImageProcess(c *gin.Context, client cycletls.CycleTLS, openAIReq model.Open
 	if err != nil {
 		return nil, err
 	} else {
+		// 打印响应body
+		body := response.Body
+		switch {
+		//case common.IsCloudflareChallenge(body):
+		//	logger.Errorf(c.Request.Context(), errCloudflareChallengeMsg)
+		//	c.JSON(http.StatusInternalServerError, gin.H{"error": errCloudflareChallengeMsg})
+		//	return false
+		//case common.IsServiceUnavailablePage(data):
+		//	logger.Errorf(ctx, errServiceUnavailable)
+		//	c.JSON(http.StatusInternalServerError, gin.H{"error": errServiceUnavailable})
+		//	return false
+		//case common.IsServerError(data):
+		//	logger.Errorf(ctx, errServerErrMsg)
+		//	c.JSON(http.StatusInternalServerError, gin.H{"error": errServerErrMsg})
+		//	return false
+		case common.IsRateLimit(body):
+			//isRateLimit = true
+			logger.Warnf(c.Request.Context(), "Cookie rate limited, try again later.")
+			return nil, fmt.Errorf("cookie rate limited, try again later")
+		}
+		// 创建Reader
+		//bodyReader := strings.NewReader(response.Body)
+
 		// 解析响应获取task_ids
 		projectId, taskIDs := extractTaskIDs(response.Body)
 		if len(taskIDs) == 0 {
