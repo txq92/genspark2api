@@ -17,10 +17,12 @@ var GSCookie = os.Getenv("GS_COOKIE")
 var GSCookies = strings.Split(os.Getenv("GS_COOKIE"), ",")
 var AutoDelChat = env.Int("AUTO_DEL_CHAT", 0)
 var ProxyUrl = env.String("PROXY_URL", "")
-var ModelChatMapStr = env.String("MODEL_CHAT_MAP", "")
 var AutoModelChatMapType = env.Int("AUTO_MODEL_CHAT_MAP_TYPE", 1)
 var YesCaptchaClientKey = env.String("YES_CAPTCHA_CLIENT_KEY", "")
+var ModelChatMapStr = env.String("MODEL_CHAT_MAP", "")
 var ModelChatMap = make(map[string]string)
+var SessionImageChatMapStr = env.String("SESSION_IMAGE_CHAT_MAP", "")
+var SessionImageChatMap = make(map[string]string)
 var GlobalSessionManager *SessionManager
 var YescaptchaClient *yescaptcha.Client
 
@@ -53,6 +55,12 @@ func NewCookieManager() *CookieManager {
 	var validCookies []string
 	for _, cookie := range cookies {
 		if strings.TrimSpace(cookie) != "" {
+
+			if !strings.Contains(cookie, "session_id=") {
+				cookie = "session_id=" + cookie
+
+			}
+
 			validCookies = append(validCookies, cookie)
 		}
 	}
@@ -145,4 +153,18 @@ func (sm *SessionManager) DeleteSession(cookie string, model string) {
 		Model:  model,
 	}
 	delete(sm.sessions, key)
+}
+
+// GetChatIDsByCookie 获取指定cookie关联的所有chatID列表(读操作,使用读锁)
+func (sm *SessionManager) GetChatIDsByCookie(cookie string) []string {
+	sm.mutex.RLock()
+	defer sm.mutex.RUnlock()
+
+	var chatIDs []string
+	for key, chatID := range sm.sessions {
+		if key.Cookie == cookie {
+			chatIDs = append(chatIDs, chatID)
+		}
+	}
+	return chatIDs
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/samber/lo"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"strings"
 	"time"
@@ -91,7 +92,7 @@ func ChatForOpenAI(c *gin.Context) {
 			c.JSON(500, gin.H{"error": "Failed to marshal request body"})
 			return
 		}
-		resp, err := ImageProcess(c, client, cookie, model.OpenAIImagesGenerationRequest{
+		resp, err := ImageProcess(c, client, model.OpenAIImagesGenerationRequest{
 			Model:  openAIReq.Model,
 			Prompt: openAIReq.GetUserContent()[0],
 		})
@@ -344,6 +345,27 @@ func createRequestBody(c *gin.Context, client cycletls.CycleTLS, cookie string, 
 		models = common.MixtureModelList
 	}
 
+	//gRecaptchaToken := ""
+	//if config.YesCaptchaClientKey != "" {
+	//	// 创建上下文，设置超时
+	//	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	//	defer cancel()
+	//	// 准备请求参数
+	//	req := yescaptcha.RecaptchaV3Request{
+	//		WebsiteURL: "https://www.genspark.ai/",
+	//		WebsiteKey: "6Leq7KYqAAAAAGdd1NaUBJF9dHTPAKP7DcnaRc66",
+	//		PageAction: "copilot",
+	//	}
+	//
+	//	// 解决验证码
+	//	response, err := config.YescaptchaClient.SolveRecaptchaV3(ctx, req)
+	//	if err != nil {
+	//		return map[string]interface{}{}, err
+	//	}
+	//
+	//	gRecaptchaToken = response
+	//}
+
 	// 创建请求体
 	return map[string]interface{}{
 		"type": chatType,
@@ -357,10 +379,10 @@ func createRequestBody(c *gin.Context, client cycletls.CycleTLS, cookie string, 
 			"run_with_another_model": false,
 			"writingContent":         nil,
 		},
-		//"g_recaptcha_token": helper.GetTimeString(),
+		//"g_recaptcha_token": gRecaptchaToken,
 	}, nil
 }
-func createImageRequestBody(c *gin.Context, cookie string, openAIReq *model.OpenAIImagesGenerationRequest) (map[string]interface{}, error) {
+func createImageRequestBody(c *gin.Context, cookie string, openAIReq *model.OpenAIImagesGenerationRequest, chatId string) (map[string]interface{}, error) {
 	//gRecaptchaToken := ""
 	//if config.YesCaptchaClientKey != "" {
 	//	// 创建上下文，设置超时
@@ -457,11 +479,18 @@ func createImageRequestBody(c *gin.Context, cookie string, openAIReq *model.Open
 			},
 		}
 	}
+	var currentQueryString string
+	if len(chatId) != 0 {
+		currentQueryString = fmt.Sprintf("id=%s&type=%s", chatId, chatType)
+	} else {
+		currentQueryString = fmt.Sprintf("type=%s", chatId, chatType)
+	}
 
 	// 创建请求体
 	return map[string]interface{}{
-		"type":                 "COPILOT_MOA_IMAGE",
-		"current_query_string": "type=COPILOT_MOA_IMAGE",
+		"type": "COPILOT_MOA_IMAGE",
+		//"current_query_string": "type=COPILOT_MOA_IMAGE",
+		"current_query_string": currentQueryString,
 		"messages":             messages,
 		"user_s_input":         openAIReq.Prompt,
 		"action_params":        map[string]interface{}{},
@@ -573,16 +602,18 @@ func makeImageRequest(client cycletls.CycleTLS, jsonData []byte, cookie string) 
 	accept := "*/*"
 
 	return client.Do(apiEndpoint, cycletls.Options{
-		Timeout: 10 * 60 * 60,
-		Proxy:   config.ProxyUrl, // 在每个请求中设置代理
-		Body:    string(jsonData),
-		Method:  "POST",
+		UserAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome",
+		Timeout:   10 * 60 * 60,
+		Proxy:     config.ProxyUrl, // 在每个请求中设置代理
+		Body:      string(jsonData),
+		Method:    "POST",
 		Headers: map[string]string{
 			"Content-Type": "application/json",
 			"Accept":       accept,
 			"Origin":       baseURL,
 			"Referer":      baseURL + "/",
 			"Cookie":       cookie,
+			"User-Agent":   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome",
 		},
 	}, "POST")
 }
@@ -1117,13 +1148,17 @@ func ImagesForOpenAI(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	cookie, err := common.RandomElement(config.GSCookies)
-	if err != nil {
-		logger.Errorf(c.Request.Context(), err.Error())
-		return
-	}
+	// 初始化cookie
+	//cookieManager := config.NewCookieManager()
+	//cookie, err := cookieManager.GetRandomCookie()
+	//
+	//if err != nil {
+	//	logger.Errorf(c.Request.Context(), "Failed to get initial cookie: %v", err)
+	//	c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
+	//	return
+	//}
 
-	resp, err := ImageProcess(c, client, cookie, openAIReq)
+	resp, err := ImageProcess(c, client, openAIReq)
 	if err != nil {
 		logger.Errorf(c.Request.Context(), fmt.Sprintf("ImageProcess err  %v\n", err))
 		c.JSON(http.StatusInternalServerError, model.OpenAIErrorResponse{
@@ -1140,8 +1175,127 @@ func ImagesForOpenAI(c *gin.Context) {
 
 }
 
-func ImageProcess(c *gin.Context, client cycletls.CycleTLS, cookie string, openAIReq model.OpenAIImagesGenerationRequest) (*model.OpenAIImagesGenerationResponse, error) {
-	requestBody, err := createImageRequestBody(c, cookie, &openAIReq)
+func ImageProcess(c *gin.Context, client cycletls.CycleTLS, openAIReq model.OpenAIImagesGenerationRequest) (*model.OpenAIImagesGenerationResponse, error) {
+	//cookie, err := cookieManager.GetRandomCookie()
+	//if err != nil {
+	//	logger.Errorf(c.Request.Context(), "Failed to get initial cookie: %v", err)
+	//	//c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
+	//	return nil, err
+	//}
+
+	//var projectId string
+
+	// 查询当前cookie是否存在映射
+	//if chatId, ok := config.GlobalSessionManager.GetChatID(cookie, openAIReq.Model); ok {
+	//	projectId = chatId
+	//} else {
+	//	// 不存在则新建对话
+	//	//handleNonStreamRequest(c, client, cookie, cookieManager, requestBody, openAIReq.Model)
+	//	requestBody, err := createRequestBody(c, client, cookie, &model.OpenAIChatCompletionRequest{
+	//		Model:  "gpt-4o-mini",
+	//		Stream: false,
+	//		Messages: []model.OpenAIChatMessage{{
+	//			Role:    "user",
+	//			Content: "hi!",
+	//		}},
+	//	})
+	//
+	//	jsonData, err := json.Marshal(requestBody)
+	//	if err != nil {
+	//		c.JSON(500, gin.H{"error": "Failed to marshal request body"})
+	//		return nil, err
+	//	}
+	//	response, err := makeRequest(client, jsonData, cookie, false)
+	//	if err != nil {
+	//		logger.Errorf(c, "makeRequest err: %v", err)
+	//		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	//		return nil, err
+	//	}
+	//
+	//	scanner := bufio.NewScanner(strings.NewReader(response.Body))
+	//	//var content string
+	//	var firstLine string
+	//	//var projectId string
+	//	//isRateLimit := false
+	//
+	//	for scanner.Scan() {
+	//		line := scanner.Text()
+	//		if firstLine == "" {
+	//			firstLine = line
+	//		}
+	//		if line == "" {
+	//			continue
+	//		}
+	//		logger.Debug(c, strings.TrimSpace(line))
+	//
+	//		switch {
+	//		//case common.IsCloudflareChallenge(line):
+	//		//	logger.Errorf(ctx, errCloudflareChallengeMsg)
+	//		//	c.JSON(http.StatusInternalServerError, gin.H{"error": errCloudflareChallengeMsg})
+	//		//	return
+	//		//case common.IsRateLimit(line):
+	//		//	isRateLimit = true
+	//		//	logger.Warnf(ctx, "Cookie rate limited, switching to next cookie, attempt %d/%d", attempt+1, maxRetries)
+	//		//	break
+	//		//case common.IsServiceUnavailablePage(line):
+	//		//	logger.Errorf(ctx, errServiceUnavailable)
+	//		//	c.JSON(http.StatusInternalServerError, gin.H{"error": errServiceUnavailable})
+	//		//	return
+	//		//case common.IsServerError(line):
+	//		//	logger.Errorf(ctx, errServerErrMsg)
+	//		//	c.JSON(http.StatusInternalServerError, gin.H{"error": errServerErrMsg})
+	//		//	return
+	//		case strings.HasPrefix(line, "data: "):
+	//
+	//			data := strings.TrimPrefix(line, "data: ")
+	//			var parsedResponse struct {
+	//				Type      string `json:"type"`
+	//				FieldName string `json:"field_name"`
+	//				Content   string `json:"content"`
+	//				Id        string `json:"id"`
+	//			}
+	//			if err := json.Unmarshal([]byte(data), &parsedResponse); err != nil {
+	//				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	//				return nil, err
+	//			}
+	//			if parsedResponse.Type == "project_start" {
+	//				projectId = parsedResponse.Id
+	//				config.GlobalSessionManager.AddSession(cookie, openAIReq.Model, projectId)
+	//			}
+	//		}
+	//	}
+	//
+	//}
+
+	var cookie string
+	chatId := ""
+	if len(config.SessionImageChatMap) == 0 {
+		logger.Warnf(c, "未配置环境变量 SESSION_IMAGE_CHAT_MAP, 可能会生图失败!")
+		randomCookie, err := config.NewCookieManager().GetRandomCookie()
+		if err != nil {
+			logger.Errorf(c.Request.Context(), "Failed to get initial cookie: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
+			return nil, err
+		}
+		cookie = randomCookie
+	} else {
+		keys := make([]string, 0, len(config.SessionImageChatMap))
+		for k := range config.SessionImageChatMap {
+			keys = append(keys, k)
+		}
+
+		// 生成随机索引
+		rand.Seed(time.Now().UnixNano()) // 设置随机种子
+		randomIndex := rand.Intn(len(keys))
+
+		// 获取随机key
+		cookie = keys[randomIndex]
+
+		// 获取对应的value
+		chatId = config.SessionImageChatMap[cookie]
+	}
+
+	requestBody, err := createImageRequestBody(c, cookie, &openAIReq, chatId)
 	if err != nil {
 		return nil, err
 	}
@@ -1163,7 +1317,7 @@ func ImageProcess(c *gin.Context, client cycletls.CycleTLS, cookie string, openA
 		projectId, taskIDs := extractTaskIDs(response.Body)
 		if len(taskIDs) == 0 {
 			//return nil, fmt.Errorf("未配置环境变量 YES_CAPTCHA_CLIENT_KEY")
-			return nil, fmt.Errorf("目前版本生图模型暂不可用,努力修复中...")
+			return nil, fmt.Errorf("request error, please try again later")
 		}
 
 		// 获取所有图片URL
@@ -1196,9 +1350,11 @@ func ImageProcess(c *gin.Context, client cycletls.CycleTLS, cookie string, openA
 		// 删除临时会话
 		if config.AutoDelChat == 1 {
 			go func() {
-				client := cycletls.Init()
-				defer safeClose(client)
-				makeDeleteRequest(client, cookie, projectId)
+				if config.AutoDelChat == 1 {
+					client := cycletls.Init()
+					defer safeClose(client)
+					makeDeleteRequest(client, cookie, projectId)
+				}
 			}()
 		}
 
