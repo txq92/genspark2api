@@ -535,7 +535,7 @@ func handleMessageFieldDelta(c *gin.Context, event map[string]interface{}, respo
 	}
 
 	var delta string
-	if strings.HasPrefix(modelName, "o1") {
+	if modelName == "o1" {
 		delta, ok = event["field_value"].(string)
 	} else {
 		delta, ok = event["delta"].(string)
