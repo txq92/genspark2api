@@ -14,7 +14,6 @@ import (
 	"github.com/samber/lo"
 	"io"
 	"io/ioutil"
-	"math/rand"
 	"net/http"
 	"strings"
 	"time"
@@ -627,6 +626,11 @@ func makeDeleteRequest(client cycletls.CycleTLS, cookie, projectId string) (cycl
 			return cycletls.Response{}, nil
 		}
 	}
+	for _, v := range config.SessionImageChatMap {
+		if v == projectId {
+			return cycletls.Response{}, nil
+		}
+	}
 
 	accept := "application/json"
 
@@ -1176,183 +1180,115 @@ func ImagesForOpenAI(c *gin.Context) {
 }
 
 func ImageProcess(c *gin.Context, client cycletls.CycleTLS, openAIReq model.OpenAIImagesGenerationRequest) (*model.OpenAIImagesGenerationResponse, error) {
-	//cookie, err := cookieManager.GetRandomCookie()
-	//if err != nil {
-	//	logger.Errorf(c.Request.Context(), "Failed to get initial cookie: %v", err)
-	//	//c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
-	//	return nil, err
-	//}
+	const (
+		errNoValidCookies = "No valid cookies available"
+		errRateLimitMsg   = "Rate limit reached, please try again later"
+		errServerErrMsg   = "An error occurred with the current request, please try again"
+		errNoValidTaskIDs = "No valid task IDs received"
+	)
 
-	//var projectId string
+	var (
+		sessionImageChatManager *config.SessionMapManager
+		maxRetries              int
+		cookie                  string
+		chatId                  string
+	)
 
-	// 查询当前cookie是否存在映射
-	//if chatId, ok := config.GlobalSessionManager.GetChatID(cookie, openAIReq.Model); ok {
-	//	projectId = chatId
-	//} else {
-	//	// 不存在则新建对话
-	//	//handleNonStreamRequest(c, client, cookie, cookieManager, requestBody, openAIReq.Model)
-	//	requestBody, err := createRequestBody(c, client, cookie, &model.OpenAIChatCompletionRequest{
-	//		Model:  "gpt-4o-mini",
-	//		Stream: false,
-	//		Messages: []model.OpenAIChatMessage{{
-	//			Role:    "user",
-	//			Content: "hi!",
-	//		}},
-	//	})
-	//
-	//	jsonData, err := json.Marshal(requestBody)
-	//	if err != nil {
-	//		c.JSON(500, gin.H{"error": "Failed to marshal request body"})
-	//		return nil, err
-	//	}
-	//	response, err := makeRequest(client, jsonData, cookie, false)
-	//	if err != nil {
-	//		logger.Errorf(c, "makeRequest err: %v", err)
-	//		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-	//		return nil, err
-	//	}
-	//
-	//	scanner := bufio.NewScanner(strings.NewReader(response.Body))
-	//	//var content string
-	//	var firstLine string
-	//	//var projectId string
-	//	//isRateLimit := false
-	//
-	//	for scanner.Scan() {
-	//		line := scanner.Text()
-	//		if firstLine == "" {
-	//			firstLine = line
-	//		}
-	//		if line == "" {
-	//			continue
-	//		}
-	//		logger.Debug(c, strings.TrimSpace(line))
-	//
-	//		switch {
-	//		//case common.IsCloudflareChallenge(line):
-	//		//	logger.Errorf(ctx, errCloudflareChallengeMsg)
-	//		//	c.JSON(http.StatusInternalServerError, gin.H{"error": errCloudflareChallengeMsg})
-	//		//	return
-	//		//case common.IsRateLimit(line):
-	//		//	isRateLimit = true
-	//		//	logger.Warnf(ctx, "Cookie rate limited, switching to next cookie, attempt %d/%d", attempt+1, maxRetries)
-	//		//	break
-	//		//case common.IsServiceUnavailablePage(line):
-	//		//	logger.Errorf(ctx, errServiceUnavailable)
-	//		//	c.JSON(http.StatusInternalServerError, gin.H{"error": errServiceUnavailable})
-	//		//	return
-	//		//case common.IsServerError(line):
-	//		//	logger.Errorf(ctx, errServerErrMsg)
-	//		//	c.JSON(http.StatusInternalServerError, gin.H{"error": errServerErrMsg})
-	//		//	return
-	//		case strings.HasPrefix(line, "data: "):
-	//
-	//			data := strings.TrimPrefix(line, "data: ")
-	//			var parsedResponse struct {
-	//				Type      string `json:"type"`
-	//				FieldName string `json:"field_name"`
-	//				Content   string `json:"content"`
-	//				Id        string `json:"id"`
-	//			}
-	//			if err := json.Unmarshal([]byte(data), &parsedResponse); err != nil {
-	//				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-	//				return nil, err
-	//			}
-	//			if parsedResponse.Type == "project_start" {
-	//				projectId = parsedResponse.Id
-	//				config.GlobalSessionManager.AddSession(cookie, openAIReq.Model, projectId)
-	//			}
-	//		}
-	//	}
-	//
-	//}
+	cookieManager := config.NewCookieManager()
+	sessionImageChatManager = config.NewSessionMapManager()
+	ctx := c.Request.Context()
 
-	var cookie string
-	chatId := ""
+	// Initialize session manager and get initial cookie
 	if len(config.SessionImageChatMap) == 0 {
-		logger.Warnf(c, "未配置环境变量 SESSION_IMAGE_CHAT_MAP, 可能会生图失败!")
-		randomCookie, err := config.NewCookieManager().GetRandomCookie()
+		logger.Warnf(ctx, "未配置环境变量 SESSION_IMAGE_CHAT_MAP, 可能会生图失败!")
+		maxRetries = len(cookieManager.Cookies)
+
+		var err error
+		cookie, err = cookieManager.GetRandomCookie()
 		if err != nil {
-			logger.Errorf(c.Request.Context(), "Failed to get initial cookie: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
+			logger.Errorf(ctx, "Failed to get initial cookie: %v", err)
+			return nil, fmt.Errorf(errNoValidCookies)
+		}
+	} else {
+		maxRetries = sessionImageChatManager.GetSize()
+		cookie, chatId, _ = sessionImageChatManager.GetRandomKeyValue()
+	}
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		// Create request body
+		requestBody, err := createImageRequestBody(c, cookie, &openAIReq, chatId)
+		if err != nil {
+			logger.Errorf(ctx, "Failed to create request body: %v", err)
 			return nil, err
 		}
-		cookie = randomCookie
-	} else {
-		keys := make([]string, 0, len(config.SessionImageChatMap))
-		for k := range config.SessionImageChatMap {
-			keys = append(keys, k)
+
+		// Marshal request body
+		jsonData, err := json.Marshal(requestBody)
+		if err != nil {
+			logger.Errorf(ctx, "Failed to marshal request body: %v", err)
+			return nil, err
 		}
 
-		// 生成随机索引
-		rand.Seed(time.Now().UnixNano()) // 设置随机种子
-		randomIndex := rand.Intn(len(keys))
+		// Make request
+		response, err := makeImageRequest(client, jsonData, cookie)
+		if err != nil {
+			logger.Errorf(ctx, "Failed to make image request: %v", err)
+			return nil, err
+		}
 
-		// 获取随机key
-		cookie = keys[randomIndex]
-
-		// 获取对应的value
-		chatId = config.SessionImageChatMap[cookie]
-	}
-
-	requestBody, err := createImageRequestBody(c, cookie, &openAIReq, chatId)
-	if err != nil {
-		return nil, err
-	}
-	jsonData, err := json.Marshal(requestBody)
-	if err != nil {
-		//c.JSON(500, gin.H{"error": "Failed to marshal request body"})
-		return nil, err
-	}
-
-	//client := cycletls.Init()
-	//defer client.Close()
-
-	response, err := makeImageRequest(client, jsonData, cookie)
-
-	if err != nil {
-		return nil, err
-	} else {
-		// 打印响应body
 		body := response.Body
-		switch {
-		//case common.IsCloudflareChallenge(body):
-		//	logger.Errorf(c.Request.Context(), errCloudflareChallengeMsg)
-		//	c.JSON(http.StatusInternalServerError, gin.H{"error": errCloudflareChallengeMsg})
-		//	return false
-		//case common.IsServiceUnavailablePage(data):
-		//	logger.Errorf(ctx, errServiceUnavailable)
-		//	c.JSON(http.StatusInternalServerError, gin.H{"error": errServiceUnavailable})
-		//	return false
-		//case common.IsServerError(data):
-		//	logger.Errorf(ctx, errServerErrMsg)
-		//	c.JSON(http.StatusInternalServerError, gin.H{"error": errServerErrMsg})
-		//	return false
-		case common.IsRateLimit(body):
-			//isRateLimit = true
-			logger.Warnf(c.Request.Context(), "Cookie rate limited, try again later.")
-			return nil, fmt.Errorf("cookie rate limited, try again later")
-		}
-		// 创建Reader
-		//bodyReader := strings.NewReader(response.Body)
 
-		// 解析响应获取task_ids
+		// Handle different response cases
+		switch {
+		case common.IsRateLimit(body):
+			logger.Warnf(ctx, "Cookie rate limited, switching to next cookie, attempt %d/%d", attempt+1, maxRetries)
+			if sessionImageChatManager != nil {
+				cookie, chatId, err = sessionImageChatManager.GetNextKeyValue()
+				if err != nil {
+					logger.Errorf(ctx, "No more valid cookies available after attempt %d", attempt+1)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
+					return nil, fmt.Errorf(errNoValidCookies)
+				}
+			} else {
+				//cookieManager := config.NewCookieManager()
+				cookie, err = cookieManager.GetNextCookie()
+				if err != nil {
+					logger.Errorf(ctx, "No more valid cookies available after attempt %d", attempt+1)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
+					return nil, fmt.Errorf(errNoValidCookies)
+				}
+			}
+			continue
+
+		case common.IsServerError(body):
+			logger.Errorf(ctx, errServerErrMsg)
+			return nil, fmt.Errorf(errServerErrMsg)
+		case common.IsServerOverloaded(body):
+			logger.Errorf(ctx, fmt.Sprintf("Server overloaded, please try again later.%s", "官方服务超载或环境变量 SESSION_IMAGE_CHAT_MAP 未配置"))
+			return nil, fmt.Errorf("Server overloaded, please try again later.")
+		}
+
+		// Extract task IDs
 		projectId, taskIDs := extractTaskIDs(response.Body)
 		if len(taskIDs) == 0 {
-			//return nil, fmt.Errorf("未配置环境变量 YES_CAPTCHA_CLIENT_KEY")
-			return nil, fmt.Errorf("request error, please try again later")
+			logger.Errorf(ctx, "Response body: %s", response.Body)
+			return nil, fmt.Errorf(errNoValidTaskIDs)
 		}
 
-		// 获取所有图片URL
+		// Poll for image URLs
 		imageURLs := pollTaskStatus(c, client, taskIDs, cookie)
+		if len(imageURLs) == 0 {
+			logger.Warnf(ctx, "No image URLs received, retrying with next cookie")
+			continue
+		}
 
-		// 创建响应对象
-		response := &model.OpenAIImagesGenerationResponse{
+		// Create response object
+		result := &model.OpenAIImagesGenerationResponse{
 			Created: time.Now().Unix(),
 			Data:    make([]*model.OpenAIImagesGenerationDataResponse, 0, len(imageURLs)),
 		}
 
-		// 遍历 imageURLs 组装数据
+		// Process image URLs
 		for _, url := range imageURLs {
 			data := &model.OpenAIImagesGenerationDataResponse{
 				URL:           url,
@@ -1362,30 +1298,33 @@ func ImageProcess(c *gin.Context, client cycletls.CycleTLS, openAIReq model.Open
 			if openAIReq.ResponseFormat == "b64_json" {
 				base64Str, err := getBase64ByUrl(data.URL)
 				if err != nil {
-					logger.Errorf(c.Request.Context(), fmt.Sprintf("getBase64ByUrl err  %v\n", err))
-					return nil, fmt.Errorf("getBase64ByUrl err: %v\n", err)
+					logger.Errorf(ctx, "getBase64ByUrl error: %v", err)
+					continue
 				}
 				data.B64Json = "data:image/webp;base64," + base64Str
 			}
-			response.Data = append(response.Data, data)
+
+			result.Data = append(result.Data, data)
 		}
 
-		// 删除临时会话
-		if config.AutoDelChat == 1 {
-			go func() {
-				if config.AutoDelChat == 1 {
+		// Handle successful case
+		if len(result.Data) > 0 {
+			// Delete temporary session if needed
+			if config.AutoDelChat == 1 {
+				go func() {
 					client := cycletls.Init()
 					defer safeClose(client)
 					makeDeleteRequest(client, cookie, projectId)
-				}
-			}()
+				}()
+			}
+			return result, nil
 		}
-
-		//c.JSON(200, response)
-		return response, nil
 	}
-}
 
+	// All retries exhausted
+	logger.Errorf(ctx, "All cookies exhausted after %d attempts", maxRetries)
+	return nil, fmt.Errorf("all cookies are temporarily unavailable")
+}
 func extractTaskIDs(responseBody string) (string, []string) {
 	var taskIDs []string
 	var projectId string

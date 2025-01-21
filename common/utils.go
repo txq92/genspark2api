@@ -174,6 +174,14 @@ func IsServerError(data string) bool {
 	return false
 }
 
+func IsServerOverloaded(data string) bool {
+	if strings.Contains(data, `data: {"id": "", "role": "assistant", "content": "Server overloaded, please try again later.", "action": null, "recommend_actions": null, "is_prompt": false, "render_template": null, "session_state": null, "message_type": null, "type": "message_result"}`) {
+		return true
+	}
+
+	return false
+}
+
 func IsServiceUnavailablePage(data string) bool {
 	// 检查基本的 HTML 结构
 	htmlPattern := `^<!doctype html><html.*?><head>.*?</head><body.*?>.*?</body></html>`

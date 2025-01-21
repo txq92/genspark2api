@@ -168,3 +168,111 @@ func (sm *SessionManager) GetChatIDsByCookie(cookie string) []string {
 	}
 	return chatIDs
 }
+
+type SessionMapManager struct {
+	sessionMap   map[string]string
+	keys         []string
+	currentIndex int
+	mu           sync.Mutex
+}
+
+func NewSessionMapManager() *SessionMapManager {
+	// 从初始map中提取所有的key
+	keys := make([]string, 0, len(SessionImageChatMap))
+	for k := range SessionImageChatMap {
+		keys = append(keys, k)
+	}
+
+	return &SessionMapManager{
+		sessionMap:   SessionImageChatMap,
+		keys:         keys,
+		currentIndex: 0,
+	}
+}
+
+// GetCurrentKeyValue 获取当前索引对应的键值对
+func (sm *SessionMapManager) GetCurrentKeyValue() (string, string, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	if len(sm.keys) == 0 {
+		return "", "", errors.New("no sessions available")
+	}
+
+	currentKey := sm.keys[sm.currentIndex]
+	return currentKey, sm.sessionMap[currentKey], nil
+}
+
+// GetNextKeyValue 获取下一个键值对
+func (sm *SessionMapManager) GetNextKeyValue() (string, string, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	if len(sm.keys) == 0 {
+		return "", "", errors.New("no sessions available")
+	}
+
+	sm.currentIndex = (sm.currentIndex + 1) % len(sm.keys)
+	currentKey := sm.keys[sm.currentIndex]
+	return currentKey, sm.sessionMap[currentKey], nil
+}
+
+// GetRandomKeyValue 随机获取一个键值对
+func (sm *SessionMapManager) GetRandomKeyValue() (string, string, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	if len(sm.keys) == 0 {
+		return "", "", errors.New("no sessions available")
+	}
+
+	randomIndex := rand.Intn(len(sm.keys))
+	sm.currentIndex = randomIndex
+	currentKey := sm.keys[randomIndex]
+	return currentKey, sm.sessionMap[currentKey], nil
+}
+
+// AddKeyValue 添加新的键值对
+func (sm *SessionMapManager) AddKeyValue(key, value string) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	// 如果key不存在，则添加到keys切片中
+	if _, exists := sm.sessionMap[key]; !exists {
+		sm.keys = append(sm.keys, key)
+	}
+	sm.sessionMap[key] = value
+}
+
+// RemoveKey 删除指定的键值对
+func (sm *SessionMapManager) RemoveKey(key string) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	if _, exists := sm.sessionMap[key]; !exists {
+		return
+	}
+
+	// 从map中删除
+	delete(sm.sessionMap, key)
+
+	// 从keys切片中删除
+	for i, k := range sm.keys {
+		if k == key {
+			sm.keys = append(sm.keys[:i], sm.keys[i+1:]...)
+			break
+		}
+	}
+
+	// 调整currentIndex如果需要
+	if sm.currentIndex >= len(sm.keys) && len(sm.keys) > 0 {
+		sm.currentIndex = len(sm.keys) - 1
+	}
+}
+
+// GetSize 获取当前map的大小
+func (sm *SessionMapManager) GetSize() int {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	return len(sm.keys)
+}
