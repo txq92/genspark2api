@@ -1,14 +1,22 @@
 <p align="right">
    <strong>中文</strong> 
 </p>
-
 <div align="center">
 
 # Genspark2API
 
-_觉得有点意思的话 别忘了点个🌟_
+_觉得有点意思的话 别忘了点个 ⭐_
+
+<a href="https://t.me/+LGKwlC_xa-E5ZDk9">
+    <img src="https://telegram.org/img/website_icon.svg" width="16" height="16" style="vertical-align: middle;">
+    <span style="text-decoration: none; font-size: 12px; color: #0088cc; vertical-align: middle;">Telegram 交流群</span>
+</a>
+
+<sup><i>(原`coze-discord-proxy`交流群, 此项目仍可进此群**交流** / **反馈bug**)</i></sup>
 
 </div>
+
+
 
 ## 功能
 
