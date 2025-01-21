@@ -1259,7 +1259,25 @@ func ImageProcess(c *gin.Context, client cycletls.CycleTLS, openAIReq model.Open
 				}
 			}
 			continue
-
+		case common.IsFreeLimit(body):
+			logger.Warnf(ctx, "Cookie rate limited, switching to next cookie, attempt %d/%d", attempt+1, maxRetries)
+			if sessionImageChatManager != nil {
+				cookie, chatId, err = sessionImageChatManager.GetNextKeyValue()
+				if err != nil {
+					logger.Errorf(ctx, "No more valid cookies available after attempt %d", attempt+1)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
+					return nil, fmt.Errorf(errNoValidCookies)
+				}
+			} else {
+				//cookieManager := config.NewCookieManager()
+				cookie, err = cookieManager.GetNextCookie()
+				if err != nil {
+					logger.Errorf(ctx, "No more valid cookies available after attempt %d", attempt+1)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
+					return nil, fmt.Errorf(errNoValidCookies)
+				}
+			}
+			continue
 		case common.IsServerError(body):
 			logger.Errorf(ctx, errServerErrMsg)
 			return nil, fmt.Errorf(errServerErrMsg)

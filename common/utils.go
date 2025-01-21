@@ -182,6 +182,14 @@ func IsServerOverloaded(data string) bool {
 	return false
 }
 
+func IsFreeLimit(data string) bool {
+	if strings.Contains(data, `data: {"id": "", "role": "assistant", "content": "You've reached your free usage limit today", "action": {"type": "ACTION_QUOTA_EXCEEDED", "query_string": null, "update_flow_data": null, "label": null, "user_s_input": null, "action_params": null}, "recommend_actions": null, "is_prompt": true, "render_template": null, "session_state": {"consume_usage_quota_exceeded": true}, "message_type": null, "type": "message_result"}`) {
+		return true
+	}
+
+	return false
+}
+
 func IsServiceUnavailablePage(data string) bool {
 	// 检查基本的 HTML 结构
 	htmlPattern := `^<!doctype html><html.*?><head>.*?</head><body.*?>.*?</body></html>`
