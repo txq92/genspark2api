@@ -29,6 +29,7 @@ _觉得有点意思的话 别忘了点个 ⭐_
     - **gemini-1.5-pro**
     - **gemini-1.5-flash**
     - **deep-seek-v3**
+    - **deep-seek-r1**
 - [x] 支持识别**图片**/**文件**多轮对话
 - [x] 支持文生图接口(`/images/generations`),详细请看[生图模型配置](#生图模型配置)
     - **flux**
