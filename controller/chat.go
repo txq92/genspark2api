@@ -535,7 +535,7 @@ func handleMessageFieldDelta(c *gin.Context, event map[string]interface{}, respo
 	}
 
 	var delta string
-	if modelName == "o1" {
+	if modelName == "o1" || modelName == "o3-mini-high" {
 		delta, ok = event["field_value"].(string)
 	} else {
 		delta, ok = event["delta"].(string)
