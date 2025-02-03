@@ -13,8 +13,13 @@ import (
 
 var ApiSecret = os.Getenv("API_SECRET")
 var ApiSecrets = strings.Split(os.Getenv("API_SECRET"), ",")
+
 var GSCookie = os.Getenv("GS_COOKIE")
 var GSCookies = strings.Split(os.Getenv("GS_COOKIE"), ",")
+
+// var IpBlackList = os.Getenv("IP_BLACK_LIST")
+var IpBlackList = strings.Split(os.Getenv("IP_BLACK_LIST"), ",")
+
 var AutoDelChat = env.Int("AUTO_DEL_CHAT", 0)
 var ProxyUrl = env.String("PROXY_URL", "")
 var AutoModelChatMapType = env.Int("AUTO_MODEL_CHAT_MAP_TYPE", 1)
