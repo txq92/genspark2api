@@ -626,6 +626,11 @@ func makeDeleteRequest(client cycletls.CycleTLS, cookie, projectId string) (cycl
 			return cycletls.Response{}, nil
 		}
 	}
+	for _, v := range config.GlobalSessionManager.GetChatIDsByCookie(cookie) {
+		if v == projectId {
+			return cycletls.Response{}, nil
+		}
+	}
 	for _, v := range config.SessionImageChatMap {
 		if v == projectId {
 			return cycletls.Response{}, nil
