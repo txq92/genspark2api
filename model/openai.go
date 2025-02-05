@@ -16,6 +16,18 @@ type OpenAIChatMessage struct {
 	Content interface{} `json:"content"`
 }
 
+func (r *OpenAIChatCompletionRequest) SystemMessagesProcess() {
+	if r.Messages == nil {
+		return
+	}
+
+	for i := range r.Messages {
+		if r.Messages[i].Role == "system" {
+			r.Messages[i].Role = "user"
+		}
+	}
+}
+
 type OpenAIErrorResponse struct {
 	OpenAIError OpenAIError `json:"error"`
 }
@@ -122,7 +134,7 @@ type OpenaiModelListResponse struct {
 	Data   []OpenaiModelResponse `json:"data"`
 }
 
-func (r OpenAIChatCompletionRequest) GetUserContent() []string {
+func (r *OpenAIChatCompletionRequest) GetUserContent() []string {
 	var userContent []string
 
 	for i := len(r.Messages) - 1; i >= 0; i-- {

@@ -323,6 +323,8 @@ func fetchImageBytes(url string) ([]byte, error) {
 }
 
 func createRequestBody(c *gin.Context, client cycletls.CycleTLS, cookie string, openAIReq *model.OpenAIChatCompletionRequest) (map[string]interface{}, error) {
+	openAIReq.SystemMessagesProcess()
+
 	// 处理消息中的图像 URL
 	err := processMessages(c, client, cookie, openAIReq.Messages)
 	if err != nil {
