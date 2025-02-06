@@ -26,8 +26,7 @@ _觉得有点意思的话 别忘了点个 ⭐_
     - **o3-mini-high**
     - **claude-3-5-sonnet**
     - **claude-3-5-haiku**
-    - **gemini-1.5-pro**
-    - **gemini-1.5-flash**
+    - **gemini-2.0-flash**
     - **deep-seek-v3**
     - **deep-seek-r1**
 - [x] 支持识别**图片**/**文件**多轮对话
