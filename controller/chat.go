@@ -61,6 +61,14 @@ func ChatForOpenAI(c *gin.Context) {
 		return
 	}
 
+	// 模型映射
+	if openAIReq.Model == "deepseek-r1" {
+		openAIReq.Model = "deep-seek-r1"
+	}
+	if openAIReq.Model == "deepseek-v3" {
+		openAIReq.Model = "deep-seek-v3"
+	}
+
 	// 初始化cookie
 	cookieManager := config.NewCookieManager()
 	cookie, err := cookieManager.GetRandomCookie()
