@@ -323,7 +323,7 @@ func fetchImageBytes(url string) ([]byte, error) {
 }
 
 func createRequestBody(c *gin.Context, client cycletls.CycleTLS, cookie string, openAIReq *model.OpenAIChatCompletionRequest) (map[string]interface{}, error) {
-	openAIReq.SystemMessagesProcess()
+	openAIReq.SystemMessagesProcess(openAIReq.Model)
 
 	// 处理消息中的图像 URL
 	err := processMessages(c, client, cookie, openAIReq.Messages)
@@ -333,12 +333,13 @@ func createRequestBody(c *gin.Context, client cycletls.CycleTLS, cookie string, 
 	}
 
 	currentQueryString := fmt.Sprintf("type=%s", chatType)
-	//currentQueryString := fmt.Sprintf("id=b44b385e-08d9-4858-b4bc-9077f39df9f4type=%s", chatType)
-	// 查找 key 对应的 value
+	//查找 key 对应的 value
 	if chatId, ok := config.ModelChatMap[openAIReq.Model]; ok {
 		currentQueryString = fmt.Sprintf("id=%s&type=%s", chatId, chatType)
 	} else if chatId, ok := config.GlobalSessionManager.GetChatID(cookie, openAIReq.Model); ok {
 		currentQueryString = fmt.Sprintf("id=%s&type=%s", chatId, chatType)
+	} else if openAIReq.Model == "deep-seek-r1" {
+		openAIReq.FilterUserMessage()
 	}
 
 	models := []string{openAIReq.Model}
@@ -373,7 +374,7 @@ func createRequestBody(c *gin.Context, client cycletls.CycleTLS, cookie string, 
 		//"current_query_string": fmt.Sprintf("&type=%s", chatType),
 		"current_query_string": currentQueryString,
 		"messages":             openAIReq.Messages,
-		//"user_s_input":         "你行！",
+		//"user_s_input":  "我刚刚问了什么问题？",
 		"action_params": map[string]interface{}{},
 		"extra_data": map[string]interface{}{
 			"models":                 models,
