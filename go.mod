@@ -3,7 +3,7 @@ module genspark2api
 go 1.23
 
 require (
-	github.com/deanxv/CycleTLS/cycletls v0.0.0-20250206060125-b8e4d910abbf
+	github.com/deanxv/CycleTLS/cycletls v0.0.0-20250206063908-bfd1b7750d37
 	github.com/gin-contrib/cors v1.7.3
 	github.com/gin-gonic/gin v1.10.0
 	github.com/google/uuid v1.6.0

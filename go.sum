@@ -39,6 +39,8 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/deanxv/CycleTLS/cycletls v0.0.0-20250206060125-b8e4d910abbf h1:nsskm99CacPwCDkwCoIFDAqIHahLJyjht1bICqu1uvc=
 github.com/deanxv/CycleTLS/cycletls v0.0.0-20250206060125-b8e4d910abbf/go.mod h1:eAyIp7Lbyq6WnJDGicqf7nYr0bTj5FQ0HXQbIesuuJ8=
+github.com/deanxv/CycleTLS/cycletls v0.0.0-20250206063908-bfd1b7750d37 h1:39pwCIyBhsAylwHet8IbjgNinLnqyqSkdgqTcNHbi3E=
+github.com/deanxv/CycleTLS/cycletls v0.0.0-20250206063908-bfd1b7750d37/go.mod h1:eAyIp7Lbyq6WnJDGicqf7nYr0bTj5FQ0HXQbIesuuJ8=
 github.com/dlclark/regexp2 v1.11.4 h1:rPYF9/LECdNymJufQKmri9gV604RvvABwgOA8un7yAo=
 github.com/dlclark/regexp2 v1.11.4/go.mod h1:DHkYz0B9wPfa6wondMfaivmHpzrQ3v9q8cnmRbL6yW8=
 github.com/dustin/go-humanize v1.0.0/go.mod h1:HtrtbFcZ19U5GC7JDqmcUSB87Iq5E25KnS6fMYU6eOk=
