@@ -3,6 +3,7 @@ package common
 import (
 	"encoding/base64"
 	"fmt"
+	logger "genspark2api/common/loggger"
 	"github.com/google/uuid"
 	jsoniter "github.com/json-iterator/go"
 	_ "github.com/pkoukk/tiktoken-go"
@@ -132,7 +133,8 @@ func IsBase64(s string) bool {
 //<h1 data-translate="block_headline">Sorry, you have been blocked</h1>
 
 func IsCloudflareBlock(data string) bool {
-	if data == `<h1 data-translate="block_headline">Sorry, you have been blocked</h1>` {
+	logger.Debugf(nil, "data: %s", data)
+	if strings.Contains(data, `<h1 data-translate="block_headline">Sorry, you have been blocked</h1>`) {
 		return true
 	}
 
