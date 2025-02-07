@@ -62,11 +62,8 @@ func ChatForOpenAI(c *gin.Context) {
 	}
 
 	// 模型映射
-	if openAIReq.Model == "deepseek-r1" {
-		openAIReq.Model = "deep-seek-r1"
-	}
-	if openAIReq.Model == "deepseek-v3" {
-		openAIReq.Model = "deep-seek-v3"
+	if strings.HasPrefix(openAIReq.Model, "deepseek") {
+		openAIReq.Model = strings.Replace(openAIReq.Model, "deepseek", "deep-seek", 1)
 	}
 
 	// 初始化cookie
@@ -349,8 +346,13 @@ func createRequestBody(c *gin.Context, client cycletls.CycleTLS, cookie string, 
 	} else if openAIReq.Model == "deep-seek-r1" {
 		openAIReq.FilterUserMessage()
 	}
-
+	requestWebKnowledge := false
 	models := []string{openAIReq.Model}
+	if strings.HasSuffix(openAIReq.Model, "-search") {
+		openAIReq.Model = strings.Replace(openAIReq.Model, "-search", "", 1)
+		requestWebKnowledge = true
+		models = []string{openAIReq.Model}
+	}
 	if !lo.Contains(common.TextModelList, openAIReq.Model) {
 		models = common.MixtureModelList
 	}
@@ -388,6 +390,7 @@ func createRequestBody(c *gin.Context, client cycletls.CycleTLS, cookie string, 
 			"models":                 models,
 			"run_with_another_model": false,
 			"writingContent":         nil,
+			"request_web_knowledge":  requestWebKnowledge,
 		},
 		//"g_recaptcha_token": gRecaptchaToken,
 	}, nil
@@ -541,12 +544,15 @@ func createStreamResponse(responseId, modelName string, jsonData []byte, delta m
 // handleMessageFieldDelta 处理消息字段增量
 func handleMessageFieldDelta(c *gin.Context, event map[string]interface{}, responseId, modelName string, jsonData []byte) error {
 	fieldName, ok := event["field_name"].(string)
-	if !ok || fieldName != "session_state.answer" {
+	if !ok || (fieldName != "session_state.answer" &&
+		!strings.Contains(fieldName, "session_state.streaming_detail_answer") &&
+		fieldName != "session_state.reflection" &&
+		fieldName != "session_state.streaming_markmap") {
 		return nil
 	}
 
 	var delta string
-	if modelName == "o1" || modelName == "o3-mini-high" {
+	if (modelName == "o1" || modelName == "o3-mini-high") && fieldName == "session_state.answer" {
 		delta, ok = event["field_value"].(string)
 	} else {
 		delta, ok = event["delta"].(string)
@@ -772,7 +778,8 @@ func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string
 
 			for response := range sseChan {
 				if response.Done {
-					break
+					logger.Warnf(ctx, response.Data)
+					return false
 				}
 
 				data := response.Data
