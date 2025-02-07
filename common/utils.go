@@ -133,7 +133,7 @@ func IsBase64(s string) bool {
 //<h1 data-translate="block_headline">Sorry, you have been blocked</h1>
 
 func IsCloudflareBlock(data string) bool {
-	logger.Debugf(nil, "data: %s", data)
+	logger.SysLog(fmt.Sprintf("IsCloudflareBlock ata: %s", data))
 	if strings.Contains(data, `<h1 data-translate="block_headline">Sorry, you have been blocked</h1>`) {
 		return true
 	}
