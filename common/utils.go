@@ -129,6 +129,16 @@ func IsBase64(s string) bool {
 	return err == nil
 }
 
+//<h1 data-translate="block_headline">Sorry, you have been blocked</h1>
+
+func IsCloudflareBlock(data string) bool {
+	if data == `<h1 data-translate="block_headline">Sorry, you have been blocked</h1>` {
+		return true
+	}
+
+	return false
+}
+
 func IsCloudflareChallenge(data string) bool {
 	// 检查基本的 HTML 结构
 	htmlPattern := `^<!DOCTYPE html><html.*?><head>.*?</head><body.*?>.*?</body></html>$`

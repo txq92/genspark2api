@@ -740,6 +740,7 @@ func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string
 	const (
 		errNoValidCookies         = "No valid cookies available"
 		errCloudflareChallengeMsg = "Detected Cloudflare Challenge Page"
+		errCloudflareBlock        = "CloudFlare: Sorry, you have been blocked"
 		errServerErrMsg           = "An error occurred with the current request, please try again."
 		errServiceUnavailable     = "Genspark Service Unavailable"
 	)
@@ -785,6 +786,10 @@ func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string
 				case common.IsCloudflareChallenge(data):
 					logger.Errorf(ctx, errCloudflareChallengeMsg)
 					c.JSON(http.StatusInternalServerError, gin.H{"error": errCloudflareChallengeMsg})
+					return false
+				case common.IsCloudflareBlock(data):
+					logger.Errorf(ctx, errCloudflareBlock)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": errCloudflareBlock})
 					return false
 				case common.IsServiceUnavailablePage(data):
 					logger.Errorf(ctx, errServiceUnavailable)
@@ -1000,6 +1005,7 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie str
 	const (
 		errNoValidCookies         = "No valid cookies available"
 		errCloudflareChallengeMsg = "Detected Cloudflare Challenge Page"
+		errCloudflareBlock        = "CloudFlare: Sorry, you have been blocked"
 		errServerErrMsg           = "An error occurred with the current request, please try again."
 		errServiceUnavailable     = "Genspark Service Unavailable"
 		errNoValidResponseContent = "No valid response content"
@@ -1041,6 +1047,10 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie str
 			case common.IsCloudflareChallenge(line):
 				logger.Errorf(ctx, errCloudflareChallengeMsg)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": errCloudflareChallengeMsg})
+				return
+			case common.IsCloudflareBlock(line):
+				logger.Errorf(ctx, errCloudflareBlock)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": errCloudflareBlock})
 				return
 			case common.IsRateLimit(line):
 				isRateLimit = true
