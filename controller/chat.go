@@ -843,11 +843,11 @@ func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string
 					return false
 				case common.IsRateLimit(data):
 					isRateLimit = true
-					logger.Warnf(ctx, "Cookie rate limited, switching to next cookie, attempt %d/%d", attempt+1, maxRetries)
+					logger.Warnf(ctx, "Cookie rate limited, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
 					break SSELoop // 使用 label 跳出 SSE 循环
 				case common.IsFreeLimit(data):
 					isRateLimit = true
-					logger.Warnf(ctx, "Cookie free rate limited, switching to next cookie, attempt %d/%d", attempt+1, maxRetries)
+					logger.Warnf(ctx, "Cookie free rate limited, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
 					break SSELoop // 使用 label 跳出 SSE 循环
 				case common.IsNotLogin(data):
 					isRateLimit = true
@@ -1108,11 +1108,11 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie str
 				return
 			case common.IsRateLimit(line):
 				isRateLimit = true
-				logger.Warnf(ctx, "Cookie rate limited, switching to next cookie, attempt %d/%d", attempt+1, maxRetries)
+				logger.Warnf(ctx, "Cookie rate limited, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
 				break
 			case common.IsFreeLimit(line):
 				isRateLimit = true
-				logger.Warnf(ctx, "Cookie free rate limited, switching to next cookie, attempt %d/%d", attempt+1, maxRetries)
+				logger.Warnf(ctx, "Cookie free rate limited, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
 				break
 			case common.IsNotLogin(line):
 				isRateLimit = true
@@ -1343,7 +1343,7 @@ func ImageProcess(c *gin.Context, client cycletls.CycleTLS, openAIReq model.Open
 		// Handle different response cases
 		switch {
 		case common.IsRateLimit(body):
-			logger.Warnf(ctx, "Cookie rate limited, switching to next cookie, attempt %d/%d", attempt+1, maxRetries)
+			logger.Warnf(ctx, "Cookie rate limited, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
 			if sessionImageChatManager != nil {
 				cookie, chatId, err = sessionImageChatManager.GetNextKeyValue()
 				if err != nil {
@@ -1362,7 +1362,7 @@ func ImageProcess(c *gin.Context, client cycletls.CycleTLS, openAIReq model.Open
 			}
 			continue
 		case common.IsFreeLimit(body):
-			logger.Warnf(ctx, "Cookie free rate limited, switching to next cookie, attempt %d/%d", attempt+1, maxRetries)
+			logger.Warnf(ctx, "Cookie free rate limited, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
 			if sessionImageChatManager != nil {
 				cookie, chatId, err = sessionImageChatManager.GetNextKeyValue()
 				if err != nil {
@@ -1381,7 +1381,7 @@ func ImageProcess(c *gin.Context, client cycletls.CycleTLS, openAIReq model.Open
 			}
 			continue
 		case common.IsNotLogin(body):
-			logger.Warnf(ctx, "Cookie free rate limited, switching to next cookie, attempt %d/%d", attempt+1, maxRetries)
+			logger.Warnf(ctx, "Cookie free rate limited, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
 			if sessionImageChatManager != nil {
 				//sessionImageChatManager.RemoveKey(cookie)
 				cookie, chatId, err = sessionImageChatManager.GetNextKeyValue()
