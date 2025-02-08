@@ -810,7 +810,7 @@ func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string
 
 			var projectId string
 			isRateLimit := false
-
+		SSELoop:
 			for response := range sseChan {
 				if response.Done {
 					logger.Warnf(ctx, response.Data)
@@ -844,7 +844,19 @@ func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string
 				case common.IsRateLimit(data):
 					isRateLimit = true
 					logger.Warnf(ctx, "Cookie rate limited, switching to next cookie, attempt %d/%d", attempt+1, maxRetries)
-					break
+					break SSELoop // 使用 label 跳出 SSE 循环
+				case common.IsFreeLimit(data):
+					isRateLimit = true
+					logger.Warnf(ctx, "Cookie free rate limited, switching to next cookie, attempt %d/%d", attempt+1, maxRetries)
+					break SSELoop // 使用 label 跳出 SSE 循环
+				case common.IsNotLogin(data):
+					isRateLimit = true
+					logger.Warnf(ctx, "Cookie Not Login, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
+					//err := cookieManager.RemoveCookie(cookie)
+					//if err != nil {
+					//	logger.Errorf(ctx, "Failed to remove cookie: %v", err)
+					//}
+					break SSELoop // 使用 label 跳出 SSE 循环
 				}
 
 				// 处理事件流数据
@@ -1098,6 +1110,18 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie str
 				isRateLimit = true
 				logger.Warnf(ctx, "Cookie rate limited, switching to next cookie, attempt %d/%d", attempt+1, maxRetries)
 				break
+			case common.IsFreeLimit(line):
+				isRateLimit = true
+				logger.Warnf(ctx, "Cookie free rate limited, switching to next cookie, attempt %d/%d", attempt+1, maxRetries)
+				break
+			case common.IsNotLogin(line):
+				isRateLimit = true
+				logger.Warnf(ctx, "Cookie Not Login, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
+				//err := cookieManager.RemoveCookie(cookie)
+				//if err != nil {
+				//	logger.Errorf(ctx, "Failed to remove cookie: %v", err)
+				//}
+				break
 			case common.IsServiceUnavailablePage(line):
 				logger.Errorf(ctx, errServiceUnavailable)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": errServiceUnavailable})
@@ -1338,7 +1362,7 @@ func ImageProcess(c *gin.Context, client cycletls.CycleTLS, openAIReq model.Open
 			}
 			continue
 		case common.IsFreeLimit(body):
-			logger.Warnf(ctx, "Cookie rate limited, switching to next cookie, attempt %d/%d", attempt+1, maxRetries)
+			logger.Warnf(ctx, "Cookie free rate limited, switching to next cookie, attempt %d/%d", attempt+1, maxRetries)
 			if sessionImageChatManager != nil {
 				cookie, chatId, err = sessionImageChatManager.GetNextKeyValue()
 				if err != nil {
@@ -1354,6 +1378,31 @@ func ImageProcess(c *gin.Context, client cycletls.CycleTLS, openAIReq model.Open
 					c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
 					return nil, fmt.Errorf(errNoValidCookies)
 				}
+			}
+			continue
+		case common.IsNotLogin(body):
+			logger.Warnf(ctx, "Cookie free rate limited, switching to next cookie, attempt %d/%d", attempt+1, maxRetries)
+			if sessionImageChatManager != nil {
+				//sessionImageChatManager.RemoveKey(cookie)
+				cookie, chatId, err = sessionImageChatManager.GetNextKeyValue()
+				if err != nil {
+					logger.Errorf(ctx, "No more valid cookies available after attempt %d", attempt+1)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
+					return nil, fmt.Errorf(errNoValidCookies)
+				}
+			} else {
+				//cookieManager := config.NewCookieManager()
+				//err := cookieManager.RemoveCookie(cookie)
+				//if err != nil {
+				//	logger.Errorf(ctx, "Failed to remove cookie: %v", err)
+				//}
+				cookie, err = cookieManager.GetNextCookie()
+				if err != nil {
+					logger.Errorf(ctx, "No more valid cookies available after attempt %d", attempt+1)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
+					return nil, fmt.Errorf(errNoValidCookies)
+				}
+
 			}
 			continue
 		case common.IsServerError(body):

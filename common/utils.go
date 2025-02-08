@@ -176,6 +176,14 @@ func IsRateLimit(data string) bool {
 	return false
 }
 
+func IsNotLogin(data string) bool {
+	if strings.Contains(data, `{"status":-5,"message":"not login","data":{}}`) {
+		return true
+	}
+
+	return false
+}
+
 func IsServerError(data string) bool {
 	if data == "Internal Server Error" {
 		return true

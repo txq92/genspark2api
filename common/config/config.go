@@ -79,6 +79,39 @@ func NewCookieManager() *CookieManager {
 	}
 }
 
+func (cm *CookieManager) RemoveCookie(cookieToRemove string) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	if len(cm.Cookies) == 0 {
+		return errors.New("no cookies available")
+	}
+
+	// 查找要删除的cookie的索引
+	index := -1
+	for i, cookie := range cm.Cookies {
+		if cookie == cookieToRemove {
+			index = i
+			break
+		}
+	}
+
+	// 如果没找到要删除的cookie
+	if index == -1 {
+		return errors.New("RemoveCookie -> cookie not found")
+	}
+
+	// 从切片中删除cookie
+	cm.Cookies = append(cm.Cookies[:index], cm.Cookies[index+1:]...)
+
+	// 如果当前索引大于或等于删除后的切片长度，重置为0
+	if cm.currentIndex >= len(cm.Cookies) {
+		cm.currentIndex = 0
+	}
+
+	return nil
+}
+
 func (cm *CookieManager) GetNextCookie() (string, error) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
