@@ -169,6 +169,11 @@ func ChatForOpenAI(c *gin.Context) {
 		}
 	}
 
+	var isSearchModel bool
+	if strings.HasSuffix(openAIReq.Model, "-search") {
+		isSearchModel = true
+	}
+
 	requestBody, err := createRequestBody(c, client, cookie, &openAIReq)
 
 	if err != nil {
@@ -183,9 +188,9 @@ func ChatForOpenAI(c *gin.Context) {
 	//}
 
 	if openAIReq.Stream {
-		handleStreamRequest(c, client, cookie, cookieManager, requestBody, openAIReq.Model)
+		handleStreamRequest(c, client, cookie, cookieManager, requestBody, openAIReq.Model, isSearchModel)
 	} else {
-		handleNonStreamRequest(c, client, cookie, cookieManager, requestBody, openAIReq.Model)
+		handleNonStreamRequest(c, client, cookie, cookieManager, requestBody, openAIReq.Model, isSearchModel)
 	}
 
 }
@@ -546,7 +551,7 @@ func handleMessageFieldDelta(c *gin.Context, event map[string]interface{}, respo
 	fieldName, ok := event["field_name"].(string)
 	if !ok || (fieldName != "session_state.answer" &&
 		!strings.Contains(fieldName, "session_state.streaming_detail_answer") &&
-		fieldName != "session_state.reflection" &&
+		//fieldName != "session_state.reflection" &&
 		fieldName != "session_state.streaming_markmap") {
 		return nil
 	}
@@ -565,11 +570,41 @@ func handleMessageFieldDelta(c *gin.Context, event map[string]interface{}, respo
 	return sendSSEvent(c, streamResp)
 }
 
-// handleMessageResult 处理消息结果
-func handleMessageResult(c *gin.Context, responseId, modelName string, jsonData []byte) bool {
-	finishReason := "stop"
+type Content struct {
+	DetailAnswer string `json:"detailAnswer"`
+}
 
-	streamResp := createStreamResponse(responseId, modelName, jsonData, model.OpenAIDelta{}, &finishReason)
+// 然后这样解析
+func getDetailAnswer(eventMap map[string]interface{}) (string, error) {
+	// 获取 content 字段的值
+	contentStr, ok := eventMap["content"].(string)
+	if !ok {
+		return "", fmt.Errorf("content is not a string")
+	}
+
+	// 解析内层的 JSON
+	var content Content
+	if err := json.Unmarshal([]byte(contentStr), &content); err != nil {
+		return "", err
+	}
+
+	return content.DetailAnswer, nil
+}
+
+// handleMessageResult 处理消息结果
+func handleMessageResult(c *gin.Context, event map[string]interface{}, responseId, modelName string, jsonData []byte, searchModel bool) bool {
+	finishReason := "stop"
+	var delta string
+	var err error
+	if modelName == "o1" && searchModel {
+		delta, err = getDetailAnswer(event)
+		if err != nil {
+			logger.Errorf(c.Request.Context(), "getDetailAnswer err: %v", err)
+			return false
+		}
+	}
+
+	streamResp := createStreamResponse(responseId, modelName, jsonData, model.OpenAIDelta{Content: delta, Role: "assistant"}, &finishReason)
 	if err := sendSSEvent(c, streamResp); err != nil {
 		logger.Warnf(c.Request.Context(), "sendSSEvent err: %v", err)
 		return false
@@ -742,7 +777,7 @@ func makeUploadRequest(client cycletls.CycleTLS, uploadUrl string, fileBytes []b
 //	})
 //}
 
-func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string, cookieManager *config.CookieManager, requestBody map[string]interface{}, modelName string) {
+func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string, cookieManager *config.CookieManager, requestBody map[string]interface{}, modelName string, searchModel bool) {
 	const (
 		errNoValidCookies         = "No valid cookies available"
 		errCloudflareChallengeMsg = "Detected Cloudflare Challenge Page"
@@ -813,7 +848,7 @@ func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string
 				}
 
 				// 处理事件流数据
-				if shouldContinue := processStreamData(c, data, &projectId, cookie, responseId, modelName, jsonData); !shouldContinue {
+				if shouldContinue := processStreamData(c, data, &projectId, cookie, responseId, modelName, jsonData, searchModel); !shouldContinue {
 					return false
 				}
 			}
@@ -845,7 +880,7 @@ func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string
 }
 
 // 处理流式数据的辅助函数，返回bool表示是否继续处理
-func processStreamData(c *gin.Context, data string, projectId *string, cookie, responseId, model string, jsonData []byte) bool {
+func processStreamData(c *gin.Context, data string, projectId *string, cookie, responseId, model string, jsonData []byte, searchModel bool) bool {
 	data = strings.TrimSpace(data)
 	if !strings.HasPrefix(data, "data: ") {
 		return true
@@ -893,7 +928,7 @@ func processStreamData(c *gin.Context, data string, projectId *string, cookie, r
 			}
 		}()
 
-		return handleMessageResult(c, responseId, model, jsonData)
+		return handleMessageResult(c, event, responseId, model, jsonData, searchModel)
 	}
 
 	return true
@@ -1008,7 +1043,7 @@ func makeStreamRequest(c *gin.Context, client cycletls.CycleTLS, jsonData []byte
 //
 //		c.JSON(200, resp)
 //	}
-func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string, cookieManager *config.CookieManager, requestBody map[string]interface{}, modelName string) {
+func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string, cookieManager *config.CookieManager, requestBody map[string]interface{}, modelName string, searchModel bool) {
 	const (
 		errNoValidCookies         = "No valid cookies available"
 		errCloudflareChallengeMsg = "Detected Cloudflare Challenge Page"
@@ -1101,6 +1136,16 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie str
 							}
 						}
 					}()
+					if modelName == "o1" && searchModel {
+						// 解析内层的 JSON
+						var content Content
+						if err := json.Unmarshal([]byte(parsedResponse.Content), &content); err != nil {
+							logger.Errorf(ctx, "Failed to unmarshal response content: %v err %s", parsedResponse.Content, err.Error())
+							c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to unmarshal response content"})
+							return
+						}
+						parsedResponse.Content = content.DetailAnswer
+					}
 					content = parsedResponse.Content
 					break
 				}
