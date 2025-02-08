@@ -24,6 +24,9 @@ var AutoDelChat = env.Int("AUTO_DEL_CHAT", 0)
 var ProxyUrl = env.String("PROXY_URL", "")
 var AutoModelChatMapType = env.Int("AUTO_MODEL_CHAT_MAP_TYPE", 1)
 var YesCaptchaClientKey = env.String("YES_CAPTCHA_CLIENT_KEY", "")
+
+// 路由前缀
+var RoutePrefix = env.String("ROUTE_PREFIX", "")
 var ModelChatMapStr = env.String("MODEL_CHAT_MAP", "")
 var ModelChatMap = make(map[string]string)
 var SessionImageChatMapStr = env.String("SESSION_IMAGE_CHAT_MAP", "")
