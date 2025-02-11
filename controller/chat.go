@@ -485,9 +485,9 @@ func createImageRequestBody(c *gin.Context, cookie string, openAIReq *model.Open
 	}
 	var currentQueryString string
 	if len(chatId) != 0 {
-		currentQueryString = fmt.Sprintf("id=%s&type=%s", chatId, chatType)
+		currentQueryString = fmt.Sprintf("id=%s&type=%s", chatId, imageType)
 	} else {
-		currentQueryString = fmt.Sprintf("type=%s", chatId, chatType)
+		currentQueryString = fmt.Sprintf("type=%s", imageType)
 	}
 
 	// 创建请求体
