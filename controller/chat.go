@@ -1070,7 +1070,6 @@ func makeStreamRequest(c *gin.Context, client cycletls.CycleTLS, jsonData []byte
 //	}
 func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string, cookieManager *config.CookieManager, requestBody map[string]interface{}, modelName string, searchModel bool) {
 	const (
-		errNoValidCookies         = "No valid cookies available"
 		errCloudflareChallengeMsg = "Detected Cloudflare Challenge Page"
 		errCloudflareBlock        = "CloudFlare: Sorry, you have been blocked"
 		errServerErrMsg           = "An error occurred with the current request, please try again."
@@ -1303,14 +1302,14 @@ func ImageProcess(c *gin.Context, client cycletls.CycleTLS, openAIReq model.Open
 	)
 
 	var (
-		sessionImageChatManager *config.SessionMapManager
-		maxRetries              int
-		cookie                  string
-		chatId                  string
+		//sessionImageChatManager *config.SessionMapManager
+		maxRetries int
+		cookie     string
+		chatId     string
 	)
 
 	cookieManager := config.NewCookieManager()
-	sessionImageChatManager = config.NewSessionMapManager()
+	//sessionImageChatManager = config.NewSessionMapManager()
 	ctx := c.Request.Context()
 
 	// Initialize session manager and get initial cookie
@@ -1357,64 +1356,64 @@ func ImageProcess(c *gin.Context, client cycletls.CycleTLS, openAIReq model.Open
 		switch {
 		case common.IsRateLimit(body):
 			logger.Warnf(ctx, "Cookie rate limited, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
-			if sessionImageChatManager != nil {
-				cookie, chatId, err = sessionImageChatManager.GetNextKeyValue()
-				if err != nil {
-					logger.Errorf(ctx, "No more valid cookies available after attempt %d", attempt+1)
-					c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
-					return nil, fmt.Errorf(errNoValidCookies)
-				}
-			} else {
-				//cookieManager := config.NewCookieManager()
-				cookie, err = cookieManager.GetNextCookie()
-				if err != nil {
-					logger.Errorf(ctx, "No more valid cookies available after attempt %d", attempt+1)
-					c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
-					return nil, fmt.Errorf(errNoValidCookies)
-				}
+			//if sessionImageChatManager != nil {
+			//	cookie, chatId, err = sessionImageChatManager.GetNextKeyValue()
+			//	if err != nil {
+			//		logger.Errorf(ctx, "No more valid cookies available after attempt %d", attempt+1)
+			//		c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
+			//		return nil, fmt.Errorf(errNoValidCookies)
+			//	}
+			//} else {
+			//cookieManager := config.NewCookieManager()
+			cookie, err = cookieManager.GetNextCookie()
+			if err != nil {
+				logger.Errorf(ctx, "No more valid cookies available after attempt %d", attempt+1)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
+				return nil, fmt.Errorf(errNoValidCookies)
+				//}
 			}
 			continue
 		case common.IsFreeLimit(body):
 			logger.Warnf(ctx, "Cookie free rate limited, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
-			if sessionImageChatManager != nil {
-				cookie, chatId, err = sessionImageChatManager.GetNextKeyValue()
-				if err != nil {
-					logger.Errorf(ctx, "No more valid cookies available after attempt %d", attempt+1)
-					c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
-					return nil, fmt.Errorf(errNoValidCookies)
-				}
-			} else {
-				//cookieManager := config.NewCookieManager()
-				cookie, err = cookieManager.GetNextCookie()
-				if err != nil {
-					logger.Errorf(ctx, "No more valid cookies available after attempt %d", attempt+1)
-					c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
-					return nil, fmt.Errorf(errNoValidCookies)
-				}
+			//if sessionImageChatManager != nil {
+			//	cookie, chatId, err = sessionImageChatManager.GetNextKeyValue()
+			//	if err != nil {
+			//		logger.Errorf(ctx, "No more valid cookies available after attempt %d", attempt+1)
+			//		c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
+			//		return nil, fmt.Errorf(errNoValidCookies)
+			//	}
+			//} else {
+			//cookieManager := config.NewCookieManager()
+			cookie, err = cookieManager.GetNextCookie()
+			if err != nil {
+				logger.Errorf(ctx, "No more valid cookies available after attempt %d", attempt+1)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
+				return nil, fmt.Errorf(errNoValidCookies)
+				//}
 			}
 			continue
 		case common.IsNotLogin(body):
 			logger.Warnf(ctx, "Cookie free rate limited, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
-			if sessionImageChatManager != nil {
-				//sessionImageChatManager.RemoveKey(cookie)
-				cookie, chatId, err = sessionImageChatManager.GetNextKeyValue()
-				if err != nil {
-					logger.Errorf(ctx, "No more valid cookies available after attempt %d", attempt+1)
-					c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
-					return nil, fmt.Errorf(errNoValidCookies)
-				}
-			} else {
-				//cookieManager := config.NewCookieManager()
-				//err := cookieManager.RemoveCookie(cookie)
-				//if err != nil {
-				//	logger.Errorf(ctx, "Failed to remove cookie: %v", err)
+			//if sessionImageChatManager != nil {
+			//	//sessionImageChatManager.RemoveKey(cookie)
+			//	cookie, chatId, err = sessionImageChatManager.GetNextKeyValue()
+			//	if err != nil {
+			//		logger.Errorf(ctx, "No more valid cookies available after attempt %d", attempt+1)
+			//		c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
+			//		return nil, fmt.Errorf(errNoValidCookies)
+			//	}
+			//} else {
+			//cookieManager := config.NewCookieManager()
+			//err := cookieManager.RemoveCookie(cookie)
+			//if err != nil {
+			//	logger.Errorf(ctx, "Failed to remove cookie: %v", err)
+			//}
+			cookie, err = cookieManager.GetNextCookie()
+			if err != nil {
+				logger.Errorf(ctx, "No more valid cookies available after attempt %d", attempt+1)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
+				return nil, fmt.Errorf(errNoValidCookies)
 				//}
-				cookie, err = cookieManager.GetNextCookie()
-				if err != nil {
-					logger.Errorf(ctx, "No more valid cookies available after attempt %d", attempt+1)
-					c.JSON(http.StatusInternalServerError, gin.H{"error": errNoValidCookies})
-					return nil, fmt.Errorf(errNoValidCookies)
-				}
 
 			}
 			continue
