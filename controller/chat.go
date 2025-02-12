@@ -858,16 +858,13 @@ func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string
 				case common.IsRateLimit(data):
 					isRateLimit = true
 					logger.Warnf(ctx, "Cookie rate limited, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
-					config.AddRateLimitCookie(cookie, time.Now().Add(config.RateLimitCookieExpirationDuration))
+					config.AddRateLimitCookie(cookie, time.Now().Add(time.Duration(config.RateLimitCookieLockDuration)*time.Second))
 					break SSELoop // 使用 label 跳出 SSE 循环
 				case common.IsFreeLimit(data):
 					isRateLimit = true
 					logger.Warnf(ctx, "Cookie free rate limited, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
 					// 删除cookie
 					config.RemoveCookie(cookie)
-					if err != nil {
-						logger.Warnf(ctx, err.Error())
-					}
 					break SSELoop // 使用 label 跳出 SSE 循环
 				case common.IsNotLogin(data):
 					isRateLimit = true
@@ -1128,10 +1125,13 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie str
 			case common.IsRateLimit(line):
 				isRateLimit = true
 				logger.Warnf(ctx, "Cookie rate limited, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
+				config.AddRateLimitCookie(cookie, time.Now().Add(time.Duration(config.RateLimitCookieLockDuration)*time.Second))
 				break
 			case common.IsFreeLimit(line):
 				isRateLimit = true
 				logger.Warnf(ctx, "Cookie free rate limited, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
+				// 删除cookie
+				config.RemoveCookie(cookie)
 				break
 			case common.IsNotLogin(line):
 				isRateLimit = true
@@ -1372,6 +1372,7 @@ func ImageProcess(c *gin.Context, client cycletls.CycleTLS, openAIReq model.Open
 			//	}
 			//} else {
 			//cookieManager := config.NewCookieManager()
+			config.AddRateLimitCookie(cookie, time.Now().Add(time.Duration(config.RateLimitCookieLockDuration)*time.Second))
 			cookie, err = cookieManager.GetNextCookie()
 			if err != nil {
 				logger.Errorf(ctx, "No more valid cookies available after attempt %d", attempt+1)
@@ -1391,6 +1392,8 @@ func ImageProcess(c *gin.Context, client cycletls.CycleTLS, openAIReq model.Open
 			//	}
 			//} else {
 			//cookieManager := config.NewCookieManager()
+			// 删除cookie
+			config.RemoveCookie(cookie)
 			cookie, err = cookieManager.GetNextCookie()
 			if err != nil {
 				logger.Errorf(ctx, "No more valid cookies available after attempt %d", attempt+1)

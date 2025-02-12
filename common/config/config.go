@@ -27,13 +27,15 @@ var AutoModelChatMapType = env.Int("AUTO_MODEL_CHAT_MAP_TYPE", 1)
 var YesCaptchaClientKey = env.String("YES_CAPTCHA_CLIENT_KEY", "")
 var CheatUrl = env.String("CHEAT_URL", "https://gs-cheat.aytsao.cn/genspark/create/req/body")
 
+var RateLimitCookieLockDuration = env.Int("RATE_LIMIT_COOKIE_LOCK_DURATION", 10*60)
+
 // 路由前缀
 var RoutePrefix = env.String("ROUTE_PREFIX", "")
 var ModelChatMapStr = env.String("MODEL_CHAT_MAP", "")
 var ModelChatMap = make(map[string]string)
-var SessionImageChatMapStr = env.String("SESSION_IMAGE_CHAT_MAP", "")
 var SessionImageChatMap = make(map[string]string)
 var GlobalSessionManager *SessionManager
+var SessionImageChatMapStr = env.String("SESSION_IMAGE_CHAT_MAP", "")
 var YescaptchaClient *yescaptcha.Client
 
 var AllDialogRecordEnable = os.Getenv("ALL_DIALOG_RECORD_ENABLE")
@@ -45,7 +47,6 @@ var OnlyOpenaiApi = os.Getenv("ONLY_OPENAI_API")
 var DebugEnabled = os.Getenv("DEBUG") == "true"
 
 var RateLimitKeyExpirationDuration = 20 * time.Minute
-var RateLimitCookieExpirationDuration = 10 * 60 * time.Second
 
 var RequestOutTimeDuration = 5 * time.Minute
 
