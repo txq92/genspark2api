@@ -68,6 +68,7 @@ func ChatForOpenAI(c *gin.Context) {
 	}
 
 	// 初始化cookie
+
 	cookieManager := config.NewCookieManager()
 	cookie, err := cookieManager.GetRandomCookie()
 	if err != nil {
@@ -857,10 +858,16 @@ func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string
 				case common.IsRateLimit(data):
 					isRateLimit = true
 					logger.Warnf(ctx, "Cookie rate limited, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
+					config.AddRateLimitCookie(cookie, time.Now().Add(config.RateLimitCookieExpirationDuration))
 					break SSELoop // 使用 label 跳出 SSE 循环
 				case common.IsFreeLimit(data):
 					isRateLimit = true
 					logger.Warnf(ctx, "Cookie free rate limited, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
+					// 删除cookie
+					config.RemoveCookie(cookie)
+					if err != nil {
+						logger.Warnf(ctx, err.Error())
+					}
 					break SSELoop // 使用 label 跳出 SSE 循环
 				case common.IsNotLogin(data):
 					isRateLimit = true

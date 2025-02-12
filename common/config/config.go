@@ -15,7 +15,8 @@ var ApiSecret = os.Getenv("API_SECRET")
 var ApiSecrets = strings.Split(os.Getenv("API_SECRET"), ",")
 
 var GSCookie = os.Getenv("GS_COOKIE")
-var GSCookies = strings.Split(os.Getenv("GS_COOKIE"), ",")
+
+//var GSCookies = strings.Split(os.Getenv("GS_COOKIE"), ",")
 
 // var IpBlackList = os.Getenv("IP_BLACK_LIST")
 var IpBlackList = strings.Split(os.Getenv("IP_BLACK_LIST"), ",")
@@ -44,6 +45,7 @@ var OnlyOpenaiApi = os.Getenv("ONLY_OPENAI_API")
 var DebugEnabled = os.Getenv("DEBUG") == "true"
 
 var RateLimitKeyExpirationDuration = 20 * time.Minute
+var RateLimitCookieExpirationDuration = 10 * 60 * time.Second
 
 var RequestOutTimeDuration = 5 * time.Minute
 
@@ -52,32 +54,119 @@ var (
 	RequestRateLimitDuration int64 = 1 * 60
 )
 
+type RateLimitCookie struct {
+	ExpirationTime time.Time // 过期时间
+}
+
+var (
+	rateLimitCookies sync.Map // 使用 sync.Map 管理限速 Cookie
+)
+
+func AddRateLimitCookie(cookie string, expirationTime time.Time) {
+	rateLimitCookies.Store(cookie, RateLimitCookie{
+		ExpirationTime: expirationTime,
+	})
+	//fmt.Printf("Storing cookie: %s with value: %+v\n", cookie, RateLimitCookie{ExpirationTime: expirationTime})
+}
+
 type CookieManager struct {
 	Cookies      []string
 	currentIndex int
 	mu           sync.Mutex
 }
 
-func NewCookieManager() *CookieManager {
-	cookies := strings.Split(os.Getenv("GS_COOKIE"), ",")
-	// 过滤空字符串
-	var validCookies []string
-	for _, cookie := range cookies {
-		if strings.TrimSpace(cookie) != "" {
+var (
+	GSCookies    []string   // 存储所有的 cookies
+	cookiesMutex sync.Mutex // 保护 GSCookies 的互斥锁
+)
 
-			if !strings.Contains(cookie, "session_id=") {
-				cookie = "session_id=" + cookie
+// InitGSCookies 初始化 GSCookies
+func InitGSCookies() {
+	cookiesMutex.Lock()
+	defer cookiesMutex.Unlock()
 
-			}
+	// 从环境变量中读取 GS_COOKIE 并拆分为切片
+	cookieStr := os.Getenv("GS_COOKIE")
+	if cookieStr != "" {
+		GSCookies = strings.Split(cookieStr, ",")
+	}
+}
 
-			validCookies = append(validCookies, cookie)
+// RemoveCookie 删除指定的 cookie（支持并发）
+func RemoveCookie(cookieToRemove string) {
+	cookiesMutex.Lock()
+	defer cookiesMutex.Unlock()
+
+	// 创建一个新的切片，过滤掉需要删除的 cookie
+	var newCookies []string
+	for _, cookie := range GetGSCookies() {
+		if cookie != cookieToRemove {
+			newCookies = append(newCookies, cookie)
 		}
+	}
+
+	// 更新 GSCookies
+	GSCookies = newCookies
+}
+
+// GetGSCookies 获取 GSCookies 的副本（支持并发）
+func GetGSCookies() []string {
+	cookiesMutex.Lock()
+	defer cookiesMutex.Unlock()
+
+	// 返回 GSCookies 的副本，避免外部直接修改
+	cookiesCopy := make([]string, len(GSCookies))
+	copy(cookiesCopy, GSCookies)
+	return cookiesCopy
+}
+
+// NewCookieManager 创建 CookieManager
+func NewCookieManager() *CookieManager {
+	var validCookies []string
+
+	// 遍历 GSCookies
+	for _, cookie := range GetGSCookies() {
+		cookie = strings.TrimSpace(cookie)
+		if cookie == "" {
+			continue // 忽略空字符串
+		}
+
+		// 如果 cookie 不包含 "session_id="，则添加前缀
+		if !strings.Contains(cookie, "session_id=") {
+			cookie = "session_id=" + cookie
+		}
+
+		// 检查是否在 RateLimitCookies 中
+		if value, ok := rateLimitCookies.Load(cookie); ok {
+			rateLimitCookie, ok := value.(RateLimitCookie) // 正确转换为 RateLimitCookie
+			if !ok {
+				continue
+			}
+			if rateLimitCookie.ExpirationTime.After(time.Now()) {
+				// 如果未过期，忽略该 cookie
+				continue
+			} else {
+				// 如果已过期，从 RateLimitCookies 中删除
+				rateLimitCookies.Delete(cookie)
+			}
+		}
+
+		// 添加到有效 cookie 列表
+		validCookies = append(validCookies, cookie)
 	}
 
 	return &CookieManager{
 		Cookies:      validCookies,
 		currentIndex: 0,
 	}
+}
+
+func IsRateLimited(cookie string) bool {
+	if value, ok := rateLimitCookies.Load(cookie); ok {
+		rateLimitCookie := value.(RateLimitCookie)
+		return rateLimitCookie.ExpirationTime.After(time.Now())
+	}
+	return false
 }
 
 func (cm *CookieManager) RemoveCookie(cookieToRemove string) error {
