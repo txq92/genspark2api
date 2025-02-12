@@ -110,10 +110,10 @@ func RemoveCookie(cookieToRemove string) {
 	GSCookies = newCookies
 }
 
-// GetGSCookies 获取 GSCookies 的副本（支持并发）
+// GetGSCookies 获取 GSCookies 的副本
 func GetGSCookies() []string {
-	cookiesMutex.Lock()
-	defer cookiesMutex.Unlock()
+	//cookiesMutex.Lock()
+	//defer cookiesMutex.Unlock()
 
 	// 返回 GSCookies 的副本，避免外部直接修改
 	cookiesCopy := make([]string, len(GSCookies))
