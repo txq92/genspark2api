@@ -1403,7 +1403,7 @@ func ImageProcess(c *gin.Context, client cycletls.CycleTLS, openAIReq model.Open
 			}
 			continue
 		case common.IsNotLogin(body):
-			logger.Warnf(ctx, "Cookie free rate limited, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
+			logger.Warnf(ctx, "Cookie Not Login, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
 			//if sessionImageChatManager != nil {
 			//	//sessionImageChatManager.RemoveKey(cookie)
 			//	cookie, chatId, err = sessionImageChatManager.GetNextKeyValue()
