@@ -38,6 +38,7 @@ _觉得有点意思的话 别忘了点个 ⭐_
     - **ideogram**
     - **recraft-v3**
     - **dall-e-3**
+    - **imagen3**
 - [x] 支持自定义请求头校验值(Authorization)
 - [x] 支持cookie池(随机)
 - [x] 支持请求失败自动切换cookie重试(需配置cookie池)
