@@ -1575,6 +1575,7 @@ func pollTaskStatus(c *gin.Context, client cycletls.CycleTLS, taskIDs []string, 
 
 			var result struct {
 				Data struct {
+					ImageURLs            []string `json:"image_urls"`
 					ImageURLsNowatermark []string `json:"image_urls_nowatermark"`
 					Status               string   `json:"status"`
 				}
@@ -1585,9 +1586,15 @@ func pollTaskStatus(c *gin.Context, client cycletls.CycleTLS, taskIDs []string, 
 			}
 
 			// 如果状态成功且有图片URL
-			if result.Data.Status == "SUCCESS" && len(result.Data.ImageURLsNowatermark) > 0 {
-				imageURLs = append(imageURLs, result.Data.ImageURLsNowatermark...)
-				break
+			if result.Data.Status == "SUCCESS" {
+				if len(result.Data.ImageURLsNowatermark) > 0 {
+					imageURLs = append(imageURLs, result.Data.ImageURLsNowatermark...)
+					break
+				}
+				if len(result.Data.ImageURLs) > 0 {
+					imageURLs = append(imageURLs, result.Data.ImageURLs...)
+					break
+				}
 			}
 
 			// 等待1秒后重试
