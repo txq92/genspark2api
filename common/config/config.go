@@ -94,8 +94,8 @@ func InitGSCookies() {
 			// 如果 cookie 不包含 "session_id="，则添加前缀
 			if !strings.Contains(cookie, "session_id=") {
 				cookie = "session_id=" + cookie
-				GSCookies = append(GSCookies, cookie)
 			}
+			GSCookies = append(GSCookies, cookie)
 		}
 	}
 }
