@@ -89,7 +89,14 @@ func InitGSCookies() {
 	// 从环境变量中读取 GS_COOKIE 并拆分为切片
 	cookieStr := os.Getenv("GS_COOKIE")
 	if cookieStr != "" {
-		GSCookies = strings.Split(cookieStr, ",")
+
+		for _, cookie := range strings.Split(cookieStr, ",") {
+			// 如果 cookie 不包含 "session_id="，则添加前缀
+			if !strings.Contains(cookie, "session_id=") {
+				cookie = "session_id=" + cookie
+				GSCookies = append(GSCookies, cookie)
+			}
+		}
 	}
 }
 
@@ -124,17 +131,11 @@ func GetGSCookies() []string {
 // NewCookieManager 创建 CookieManager
 func NewCookieManager() *CookieManager {
 	var validCookies []string
-
 	// 遍历 GSCookies
 	for _, cookie := range GetGSCookies() {
 		cookie = strings.TrimSpace(cookie)
 		if cookie == "" {
 			continue // 忽略空字符串
-		}
-
-		// 如果 cookie 不包含 "session_id="，则添加前缀
-		if !strings.Contains(cookie, "session_id=") {
-			cookie = "session_id=" + cookie
 		}
 
 		// 检查是否在 RateLimitCookies 中
