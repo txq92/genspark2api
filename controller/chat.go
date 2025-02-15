@@ -863,9 +863,9 @@ func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie string
 				case common.IsFreeLimit(data):
 					isRateLimit = true
 					logger.Warnf(ctx, "Cookie free rate limited, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
-					config.AddRateLimitCookie(cookie, time.Now().Add(24*60*60*time.Second))
+					//config.AddRateLimitCookie(cookie, time.Now().Add(24*60*60*time.Second))
 					// 删除cookie
-					//config.RemoveCookie(cookie)
+					config.RemoveCookie(cookie)
 					break SSELoop // 使用 label 跳出 SSE 循环
 				case common.IsNotLogin(data):
 					isRateLimit = true
@@ -1131,9 +1131,9 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie str
 			case common.IsFreeLimit(line):
 				isRateLimit = true
 				logger.Warnf(ctx, "Cookie free rate limited, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
-				config.AddRateLimitCookie(cookie, time.Now().Add(24*60*60*time.Second))
+				//config.AddRateLimitCookie(cookie, time.Now().Add(24*60*60*time.Second))
 				// 删除cookie
-				//config.RemoveCookie(cookie)
+				config.RemoveCookie(cookie)
 				break
 			case common.IsNotLogin(line):
 				isRateLimit = true
@@ -1394,9 +1394,9 @@ func ImageProcess(c *gin.Context, client cycletls.CycleTLS, openAIReq model.Open
 			//	}
 			//} else {
 			//cookieManager := config.NewCookieManager()
-			config.AddRateLimitCookie(cookie, time.Now().Add(24*60*60*time.Second))
+			//config.AddRateLimitCookie(cookie, time.Now().Add(24*60*60*time.Second))
 			// 删除cookie
-			//config.RemoveCookie(cookie)
+			config.RemoveCookie(cookie)
 			cookie, err = cookieManager.GetNextCookie()
 			if err != nil {
 				logger.Errorf(ctx, "No more valid cookies available after attempt %d", attempt+1)

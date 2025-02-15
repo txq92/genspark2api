@@ -14,7 +14,7 @@ func LoadCookieTask() {
 
 		// 计算距离下一个时间间隔
 		now := time.Now()
-		next := time.Date(now.Year(), now.Month(), now.Day(), 12, 5, 0, 0, now.Location())
+		next := time.Date(now.Year(), now.Month(), now.Day(), 17, 5, 0, 0, now.Location())
 
 		// 如果当前时间已经超过9点，那么等待到第二天的9点
 		if now.After(next) {
