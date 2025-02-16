@@ -86,6 +86,8 @@ func InitGSCookies() {
 	cookiesMutex.Lock()
 	defer cookiesMutex.Unlock()
 
+	GSCookies = []string{}
+
 	// 从环境变量中读取 GS_COOKIE 并拆分为切片
 	cookieStr := os.Getenv("GS_COOKIE")
 	if cookieStr != "" {
