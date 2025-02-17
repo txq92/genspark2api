@@ -13,6 +13,7 @@ _觉得有点意思的话 别忘了点个 ⭐_
 </a>
 
 <sup><i>(原`coze-discord-proxy`交流群, 此项目仍可进此群**交流** / **反馈bug**)</i></sup>
+<sup><i>(群内提供公益API、AI机器人)</i></sup>
 
 </div>
 
