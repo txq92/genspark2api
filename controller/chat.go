@@ -563,25 +563,64 @@ func createStreamResponse(responseId, modelName string, jsonData []byte, delta m
 // handleMessageFieldDelta 处理消息字段增量
 func handleMessageFieldDelta(c *gin.Context, event map[string]interface{}, responseId, modelName string, jsonData []byte) error {
 	fieldName, ok := event["field_name"].(string)
-	if !ok || (fieldName != "session_state.answer" &&
-		!strings.Contains(fieldName, "session_state.streaming_detail_answer") &&
-		//fieldName != "session_state.reflection" &&
-		fieldName != "session_state.streaming_markmap") {
-		return nil
-	}
-
-	var delta string
-	if (modelName == "o1" || modelName == "o3-mini-high") && fieldName == "session_state.answer" {
-		delta, ok = event["field_value"].(string)
-	} else {
-		delta, ok = event["delta"].(string)
-	}
 	if !ok {
 		return nil
 	}
 
-	streamResp := createStreamResponse(responseId, modelName, jsonData, model.OpenAIDelta{Content: delta, Role: "assistant"}, nil)
-	return sendSSEvent(c, streamResp)
+	// 基础允许列表（所有配置下都需要处理的字段）
+	baseAllowed := fieldName == "session_state.answer" ||
+		strings.Contains(fieldName, "session_state.streaming_detail_answer") ||
+		fieldName == "session_state.streaming_markmap"
+
+	// 需要显示思考过程时需要额外处理的字段
+	if config.ReasoningHide != 1 {
+		baseAllowed = baseAllowed ||
+			fieldName == "session_state.answerthink_is_started" ||
+			fieldName == "session_state.answerthink" ||
+			fieldName == "session_state.answerthink_is_finished"
+	}
+
+	if !baseAllowed {
+		return nil
+	}
+
+	// 获取 delta 内容
+	var delta string
+	switch {
+	case (modelName == "o1" || modelName == "o3-mini-high") && fieldName == "session_state.answer":
+		delta, _ = event["field_value"].(string)
+	default:
+		delta, _ = event["delta"].(string)
+	}
+
+	// 创建基础响应
+	createResponse := func(content string) model.OpenAIChatCompletionResponse {
+		return createStreamResponse(
+			responseId,
+			modelName,
+			jsonData,
+			model.OpenAIDelta{Content: content, Role: "assistant"},
+			nil,
+		)
+	}
+
+	// 发送基础事件
+	var err error
+	if err = sendSSEvent(c, createResponse(delta)); err != nil {
+		return err
+	}
+
+	// 处理思考过程标记
+	if config.ReasoningHide != 1 {
+		switch fieldName {
+		case "session_state.answerthink_is_started":
+			err = sendSSEvent(c, createResponse("<think>\n"))
+		case "session_state.answerthink_is_finished":
+			err = sendSSEvent(c, createResponse("\n</think>"))
+		}
+	}
+
+	return err
 }
 
 type Content struct {

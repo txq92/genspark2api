@@ -27,6 +27,9 @@ var AutoModelChatMapType = env.Int("AUTO_MODEL_CHAT_MAP_TYPE", 1)
 var YesCaptchaClientKey = env.String("YES_CAPTCHA_CLIENT_KEY", "")
 var CheatUrl = env.String("CHEAT_URL", "https://gs-cheat.aytsao.cn/genspark/create/req/body")
 
+// 隐藏思考过程
+var ReasoningHide = env.Int("REASONING_HIDE", 0)
+
 var RateLimitCookieLockDuration = env.Int("RATE_LIMIT_COOKIE_LOCK_DURATION", 10*60)
 
 // 路由前缀
@@ -35,6 +38,7 @@ var ModelChatMapStr = env.String("MODEL_CHAT_MAP", "")
 var ModelChatMap = make(map[string]string)
 var SessionImageChatMap = make(map[string]string)
 var GlobalSessionManager *SessionManager
+
 var SessionImageChatMapStr = env.String("SESSION_IMAGE_CHAT_MAP", "")
 var YescaptchaClient *yescaptcha.Client
 
