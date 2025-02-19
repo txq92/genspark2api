@@ -1139,6 +1139,7 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie str
 
 		scanner := bufio.NewScanner(strings.NewReader(response.Body))
 		var content string
+		var answerThink string
 		var firstLine string
 		var projectId string
 		isRateLimit := false
@@ -1198,6 +1199,7 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie str
 					FieldName string `json:"field_name"`
 					Content   string `json:"content"`
 					Id        string `json:"id"`
+					Delta     string `json:"delta"`
 				}
 				if err := json.Unmarshal([]byte(data), &parsedResponse); err != nil {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -1205,6 +1207,25 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie str
 				}
 				if parsedResponse.Type == "project_start" {
 					projectId = parsedResponse.Id
+				}
+				if parsedResponse.Type == "message_field" {
+					// 提取思考过程
+					if config.ReasoningHide != 1 {
+						if parsedResponse.FieldName == "session_state.answerthink_is_started" {
+							answerThink = "<think>\n"
+						}
+						if parsedResponse.FieldName == "session_state.answerthink_is_finished" {
+							answerThink = answerThink + "\n</think>"
+						}
+					}
+				}
+				if parsedResponse.Type == "message_field_delta" {
+					// 提取思考过程
+					if config.ReasoningHide != 1 {
+						if parsedResponse.FieldName == "session_state.answerthink" {
+							answerThink = answerThink + parsedResponse.Delta
+						}
+					}
 				}
 				if parsedResponse.Type == "message_result" {
 					// 删除临时会话
@@ -1230,7 +1251,7 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, cookie str
 						}
 						parsedResponse.Content = content.DetailAnswer
 					}
-					content = parsedResponse.Content
+					content = strings.TrimSpace(answerThink + parsedResponse.Content)
 					break
 				}
 			}
