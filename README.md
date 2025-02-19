@@ -123,6 +123,8 @@ deanxv/genspark2api
 <summary><strong>部署到 Zeabur</strong></summary>
 <div>
 
+[![Deployed on Zeabur](https://zeabur.com/deployed-on-zeabur-dark.svg)](https://zeabur.com?referralCode=deanxv&utm_source=deanxv)
+
 > Zeabur 的服务器在国外,自动解决了网络的问题,~~同时免费的额度也足够个人使用~~
 
 1. 首先 **fork** 一份代码。
